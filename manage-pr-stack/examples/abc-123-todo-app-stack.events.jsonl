@@ -1,0 +1,2 @@
+{"date":"2026-06-15","kind":"review-feedback","summary":"Applied review feedback on PR #42 and propagated the stack.","pr_ids":["ABC-124","ABC-125"],"notes":"Resolved API test conflicts while keeping both route handlers and list UI coverage."}
+{"date":"2026-06-15","kind":"consolidation","summary":"Replaced earlier draft UI PRs with PR #43 and retargeted descendants.","pr_ids":["ABC-125"],"notes":"Durable stack history only; not a command plan."}

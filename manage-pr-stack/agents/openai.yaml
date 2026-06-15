@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage PR Stack"
+  short_description: "Maintain PR stack records."
+  default_prompt: "Find the relevant PR stack by searching ticket IDs and branch names, refresh state when needed, propagate pushed parent-branch changes through descendants, and update durable stack state."

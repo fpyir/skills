@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""Rebase and optionally force-push a stack of git branches.
+
+Plan format, whitespace-separated:
+
+    branch new_parent [old_parent]
+
+Use explicit old_parent for the first row when the previous parent was
+squash-merged or deleted. For later rows, old_parent can usually be omitted:
+the script uses the previous branch's captured origin tip.
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class PlanRow:
+    line_no: int
+    branch: str
+    new_parent: str
+    old_parent: str | None
+
+
+@dataclass(frozen=True)
+class ResolvedRow:
+    row: PlanRow
+    branch_oid: str
+    old_remote_oid: str
+    old_parent_oid: str
+
+
+class StackRebaseError(RuntimeError):
+    pass
+
+
+def git(repo: Path, *args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        text=True,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+    )
+    if check and proc.returncode != 0:
+        details = ""
+        if capture:
+            details = f"\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        raise StackRebaseError(f"git {' '.join(args)} failed with exit code {proc.returncode}{details}")
+    return proc
+
+
+def git_stream(repo: Path, *args: str) -> None:
+    proc = subprocess.run(["git", *args], cwd=repo, text=True)
+    if proc.returncode != 0:
+        raise StackRebaseError(f"git {' '.join(args)} failed with exit code {proc.returncode}")
+
+
+def oid(repo: Path, ref: str) -> str:
+    return git(repo, "rev-parse", "--verify", ref).stdout.strip()
+
+
+def short_oid(repo: Path, ref: str) -> str:
+    return git(repo, "rev-parse", "--short", ref).stdout.strip()
+
+
+def parse_plan_text(text: str, source_name: str) -> list[PlanRow]:
+    rows: list[PlanRow] = []
+    for line_no, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) not in (2, 3):
+            raise StackRebaseError(f"{source_name}:{line_no}: expected 2 or 3 columns, got {len(parts)}")
+        rows.append(
+            PlanRow(line_no=line_no, branch=parts[0], new_parent=parts[1], old_parent=parts[2] if len(parts) == 3 else None)
+        )
+    if not rows:
+        raise StackRebaseError("plan has no branch rows")
+    return rows
+
+
+def parse_plan(path: str) -> list[PlanRow]:
+    if path == "-":
+        return parse_plan_text(sys.stdin.read(), "<stdin>")
+    plan_path = Path(path).expanduser().resolve()
+    return parse_plan_text(plan_path.read_text(), str(plan_path))
+
+
+def ensure_clean_worktree(repo: Path) -> None:
+    status = git(repo, "status", "--porcelain").stdout
+    if status:
+        raise StackRebaseError(f"worktree is not clean:\n{status}")
+
+
+def current_branch(repo: Path) -> str:
+    return git(repo, "branch", "--show-current").stdout.strip()
+
+
+def require_linear_commit(repo: Path, commit: str) -> None:
+    parents = git(repo, "rev-list", "--parents", "-n", "1", commit).stdout.strip().split()
+    if len(parents) > 2:
+        raise StackRebaseError(
+            f"commit {short_oid(repo, commit)} is a merge commit; stack-rebase only supports linear branch commits"
+        )
+
+
+def infer_old_parent(repo: Path, row: PlanRow, old_remote_by_branch: dict[str, str]) -> str:
+    if row.old_parent is not None:
+        return oid(repo, row.old_parent)
+    if row.new_parent in old_remote_by_branch:
+        return old_remote_by_branch[row.new_parent]
+    return git(repo, "merge-base", row.new_parent, row.branch).stdout.strip()
+
+
+def resolve_rows(repo: Path, remote: str, rows: list[PlanRow]) -> list[ResolvedRow]:
+    resolved: list[ResolvedRow] = []
+    old_remote_by_branch: dict[str, str] = {}
+    for row in rows:
+        try:
+            branch_oid = oid(repo, row.branch)
+            old_remote_oid = oid(repo, f"{remote}/{row.branch}")
+            old_parent_oid = infer_old_parent(repo, row, old_remote_by_branch)
+            oid(repo, row.new_parent)
+        except StackRebaseError as exc:
+            raise StackRebaseError(f"plan line {row.line_no} ({row.branch}): {exc}") from exc
+
+        if branch_oid != old_remote_oid:
+            raise StackRebaseError(
+                f"{row.branch} differs from {remote}/{row.branch}; local={short_oid(repo, branch_oid)} "
+                f"remote={short_oid(repo, old_remote_oid)}"
+            )
+
+        old_remote_by_branch[row.branch] = old_remote_oid
+        resolved.append(
+            ResolvedRow(row=row, branch_oid=branch_oid, old_remote_oid=old_remote_oid, old_parent_oid=old_parent_oid)
+        )
+    return resolved
+
+
+def commits_to_replay(repo: Path, old_parent_oid: str, branch_oid: str) -> list[str]:
+    output = git(repo, "rev-list", "--reverse", f"{old_parent_oid}..{branch_oid}").stdout.strip()
+    return output.splitlines() if output else []
+
+
+def simulate(repo: Path, resolved: list[ResolvedRow]) -> dict[str, str]:
+    simulated_tips: dict[str, str] = {}
+    for item in resolved:
+        row = item.row
+        new_parent = simulated_tips.get(row.new_parent, oid(repo, row.new_parent))
+        replay = commits_to_replay(repo, item.old_parent_oid, item.branch_oid)
+        current_parent = new_parent
+        print(
+            f"DRY-RUN {row.branch}: replay {len(replay)} commit(s) onto "
+            f"{short_oid(repo, current_parent)} after {short_oid(repo, item.old_parent_oid)}"
+        )
+
+        for commit in replay:
+            require_linear_commit(repo, commit)
+            commit_parent = oid(repo, f"{commit}^1")
+            proc = git(
+                repo,
+                "merge-tree",
+                "--write-tree",
+                "--messages",
+                f"--merge-base={commit_parent}",
+                current_parent,
+                commit,
+                check=False,
+            )
+            if proc.returncode != 0:
+                print(proc.stdout, end="")
+                print(proc.stderr, end="", file=sys.stderr)
+                raise StackRebaseError(
+                    f"conflict while simulating {row.branch} commit {short_oid(repo, commit)} "
+                    f"({git(repo, 'log', '-1', '--pretty=%s', commit).stdout.strip()})"
+                )
+            tree = proc.stdout.splitlines()[0]
+            message = f"Simulate stack-rebase {row.branch} {short_oid(repo, commit)}"
+            current_parent = git(repo, "commit-tree", tree, "-p", current_parent, "-m", message).stdout.strip()
+
+        simulated_tips[row.branch] = current_parent
+        print(f"DRY-RUN {row.branch}: clean -> {short_oid(repo, current_parent)}")
+    return simulated_tips
+
+
+def execute(repo: Path, remote: str, resolved: list[ResolvedRow], push: bool, return_to: str | None) -> dict[str, str]:
+    new_tips: dict[str, str] = {}
+    try:
+        for item in resolved:
+            row = item.row
+            new_parent = new_tips.get(row.new_parent, row.new_parent)
+            print(
+                f"\n== Rebase {row.branch} --onto {new_parent} after {short_oid(repo, item.old_parent_oid)} =="
+            )
+            git_stream(repo, "switch", row.branch)
+            git_stream(repo, "rebase", "--onto", new_parent, item.old_parent_oid, row.branch)
+            new_oid = oid(repo, row.branch)
+            new_tips[row.branch] = new_oid
+            print(f"{row.branch}: {short_oid(repo, item.branch_oid)} -> {short_oid(repo, new_oid)}")
+            if push:
+                lease = f"refs/heads/{row.branch}:{item.old_remote_oid}"
+                git_stream(repo, "push", f"--force-with-lease={lease}", remote, row.branch)
+    except StackRebaseError:
+        print("\nStopped. Resolve the rebase, then run git rebase --continue, or abort with git rebase --abort.", file=sys.stderr)
+        raise
+
+    if return_to:
+        git_stream(repo, "switch", return_to)
+    return new_tips
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Dry-run or execute a stacked branch rebase.")
+    parser.add_argument("--repo", default=".", help="git repository path")
+    parser.add_argument("--plan", required=True, help="plan file, or '-' for stdin: branch new_parent [old_parent]")
+    parser.add_argument("--remote", default="origin", help="remote name, default: origin")
+    parser.add_argument("--fetch", action="store_true", help="fetch --prune before preflight")
+    parser.add_argument("--execute", action="store_true", help="perform the rebases; default is dry-run only")
+    parser.add_argument("--push", action="store_true", help="force-push each rebased branch with explicit leases")
+    parser.add_argument("--return-to", help="branch to switch back to after successful execution; default is the starting branch")
+    parser.add_argument("--no-return", action="store_true", help="stay on the final rebased branch after execution")
+    args = parser.parse_args()
+
+    if args.push and not args.execute:
+        parser.error("--push requires --execute")
+
+    repo = Path(args.repo).expanduser().resolve()
+    try:
+        repo = Path(git(repo, "rev-parse", "--show-toplevel").stdout.strip())
+        ensure_clean_worktree(repo)
+        start_branch = current_branch(repo)
+        if args.fetch:
+            git_stream(repo, "fetch", args.remote, "--prune")
+        rows = parse_plan(args.plan)
+        resolved = resolve_rows(repo, args.remote, rows)
+
+        print("Preflight OK")
+        for item in resolved:
+            print(
+                f"  {item.row.branch}: old_parent={short_oid(repo, item.old_parent_oid)} "
+                f"old_remote={short_oid(repo, item.old_remote_oid)} new_parent={item.row.new_parent}"
+            )
+
+        if not args.execute:
+            simulate(repo, resolved)
+            print("\nDry-run clean. Re-run with --execute --push to update the stack.")
+            return 0
+
+        return_to = None if args.no_return else (args.return_to or start_branch)
+        execute(repo, args.remote, resolved, args.push, return_to)
+        print("\nStack rebase complete.")
+        return 0
+    except StackRebaseError as exc:
+        print(f"stack-rebase: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

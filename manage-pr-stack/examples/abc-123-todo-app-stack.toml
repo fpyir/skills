@@ -1,0 +1,30 @@
+version = 1
+
+[stack]
+id = "ABC-123"
+title = "Build todo app with stacked PRs"
+base_ref = "main"
+
+[repo]
+github = "example-org/todo-app"
+workspace = "/Users/you/code/todo-app"
+
+[[prs]]
+id = "ABC-124"
+title = "Add todo model and CRUD API routes"
+tickets = ["ABC-124"]
+branch = "your-name/abc-124-todo-api"
+parent = "stack-base"
+base_ref = "main"
+github_pr = 42
+notes = "Bottom slice of the stack. Review feedback landed on validation for empty todo titles."
+
+[[prs]]
+id = "ABC-125"
+title = "Add todo list UI with create and toggle"
+tickets = ["ABC-125", "ABC-126"]
+branch = "your-name/abc-125-todo-list-ui"
+parent = "ABC-124"
+base_ref = "your-name/abc-124-todo-api"
+github_pr = 43
+notes = "Builds on the API slice. Replaced an earlier draft UI PR with this consolidated branch."
