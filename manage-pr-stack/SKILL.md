@@ -23,7 +23,6 @@ Use `stack.py` as the normal interface for reading and updating stack records. D
 - `examples/*.toml`: tracked example stack records.
 - `examples/*.events.jsonl`: tracked example event logs.
 - `scripts/stack-rebase`: helper for dry-running, rebasing, and force-pushing linear PR stack branches with explicit `--onto` boundaries and `--force-with-lease`.
-- `tests/test_stack_cli.py`: CLI tests using temporary stack directories.
 
 ## Core Rules
 
