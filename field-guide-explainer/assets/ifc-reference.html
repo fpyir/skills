@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A visual field guide to IFC files, their grammar, efficient parser architecture, and the hardware limits of parsing.">
+    <meta name="theme-color" content="#142c2a">
+    <title>Inside an IFC file — A parser field guide</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%23142c2a'/%3E%3Ctext x='20' y='29' text-anchor='middle' font-family='monospace' font-size='30' fill='%23d8f781'%3E%23%3C/text%3E%3C/svg%3E">
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f7f8f4;
+        --white: #ffffff;
+        --ink: #172e2b;
+        --muted: #54645e;
+        --line: #d6ded6;
+        --forest: #142c2a;
+        --forest-light: #203e39;
+        --lime: #d8f781;
+        --green: #376952;
+        --orange: #b64720;
+        --blue: #245e95;
+        --purple: #74529a;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
+      body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+      a { color: inherit; text-underline-offset: .2em; }
+      button, a, input { -webkit-tap-highlight-color: transparent; }
+      :focus-visible { outline: 3px solid var(--orange); outline-offset: 5px; }
+      ::selection { color: var(--forest); background: var(--lime); }
+      h1, h2, h3, p { margin: 0; }
+      h1, h2, h3 { line-height: 1.1; }
+      p + p { margin-top: 1rem; }
+      code, pre, .mono { font-family: var(--mono); }
+      code { font-size: .9em; }
+      pre { margin: 0; line-height: 1.85; font-size: .86rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .wrap { width: min(1160px, calc(100% - 80px)); margin: auto; }
+      .eyebrow { font: 600 .75rem/1.5 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+      .muted { color: var(--muted); }
+      .small { font-size: .875rem; }
+      .skip { position: absolute; left: 1rem; top: -100px; z-index: 10; padding: .75rem; background: var(--lime); }
+      .skip:focus { top: 1rem; }
+      header { position: sticky; top: 0; z-index: 5; background: var(--paper); border-bottom: 1px solid var(--line); }
+      .topbar { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; }
+      .brand { display: flex; align-items: center; gap: .65rem; font-weight: 650; text-decoration: none; white-space: nowrap; }
+      .brand-mark { background: var(--forest); color: var(--lime); font: 1.4rem var(--mono); padding: .1rem .5rem; border-radius: 5px; }
+      nav { display: flex; gap: 1.6rem; flex-wrap: wrap; }
+      nav a { color: var(--muted); font-size: .875rem; text-decoration: none; }
+      nav a:hover { color: var(--ink); text-decoration: underline; }
+      .hero { background: var(--forest); color: #f4f6ed; padding: 64px 0 42px; overflow: hidden; }
+      .hero-top { display: grid; grid-template-columns: 1.4fr 1fr; gap: 4rem; align-items: end; }
+      .hero .eyebrow { color: var(--lime); }
+      h1 { font-size: clamp(3rem, 6.7vw, 5.4rem); font-weight: 550; letter-spacing: -.065em; margin-top: 1.4rem; }
+      h1 em { font-family: var(--serif); color: var(--lime); font-weight: 400; }
+      .hero-intro { color: #c3d2ca; font-size: 1.125rem; max-width: 29rem; padding-bottom: .4rem; }
+      .hero-intro strong { color: #f4f6ed; font-weight: 500; }
+      .hero-visual { margin-top: 44px; display: grid; grid-template-columns: 1.2fr 1fr; border: 1px solid #4a6358; border-radius: 12px; overflow: hidden; }
+      .hero-code { padding: 24px 30px 30px; border-right: 1px solid #4a6358; }
+      .window-label { display: flex; justify-content: space-between; align-items: center; gap: 1rem; font: .75rem var(--mono); color: #b6c9bd; margin-bottom: 22px; }
+      .window-label span:last-child { color: var(--lime); }
+      .hero-code pre { font-size: .88rem; }
+      .ref { color: #d8f781; }
+      .type { color: #93d6e2; }
+      .num { color: #ffbd8b; }
+      .comment { color: #a9bfb2; }
+      .hero-graph { padding: 22px 25px; display: flex; flex-direction: column; justify-content: center; background: radial-gradient(#52695b 1px, transparent 1px); background-size: 18px 18px; }
+      .graph-root, .graph-node { background: var(--forest-light); border: 1px solid #78947d; border-radius: 7px; padding: 11px 15px; font: .82rem/1.5 var(--mono); }
+      .graph-root { align-self: center; border-color: var(--lime); }
+      .graph-root strong { color: var(--lime); font-weight: 500; }
+      .graph-branches { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; position: relative; padding-top: 39px; }
+      .graph-branches::before { content: ""; position: absolute; top: 0; left: 25%; width: 50%; height: 25px; border-bottom: 1px solid #a4bf96; background: linear-gradient(#a4bf96, #a4bf96) center top / 1px 25px no-repeat; }
+      .graph-node { position: relative; text-align: center; }
+      .graph-node::before { content: ""; position: absolute; height: 14px; width: 1px; background: #a4bf96; top: -15px; left: 50%; }
+      .graph-node span { display: block; color: #c3d2ca; margin-top: 3px; }
+      .hero-caption { margin-top: 22px; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; color: #b6c9bd; font: .75rem/1.7 var(--mono); }
+      .hero-caption strong { color: var(--lime); font-weight: 400; }
+      .section { padding: 76px 0; border-bottom: 1px solid var(--line); }
+      .section-heading { display: grid; grid-template-columns: 72px 1fr; margin-bottom: 34px; }
+      .section-number { color: var(--orange); font: .8rem var(--mono); padding-top: 9px; }
+      h2 { font-size: clamp(2rem, 3.6vw, 3rem); letter-spacing: -.045em; font-weight: 550; }
+      .deck { margin-top: 15px; max-width: 690px; color: var(--muted); font-size: 1.0625rem; }
+      .split { display: grid; grid-template-columns: 1.4fr 1fr; gap: 38px; align-items: start; }
+      .code-panel { background: var(--white); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      .panel-top { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 1rem; font: .75rem var(--mono); color: var(--muted); }
+      .file-code { padding: 18px 0; counter-reset: line; }
+      .file-line { display: block; font: .78rem/1.85 var(--mono); padding: 1px 20px 1px 53px; position: relative; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid transparent; }
+      .file-line::before { counter-increment: line; content: counter(line, decimal-leading-zero); position: absolute; left: 15px; color: #758078; font-size: .7rem; }
+      .file-line.active { background: #edf4df; border-left-color: var(--green); }
+      .file-line .ref { color: var(--green); }
+      .file-line .type { color: var(--blue); }
+      .file-line .num { color: var(--orange); }
+      .segmented { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+      .segmented button { border: 1px solid var(--line); color: var(--muted); background: transparent; border-radius: 6px; padding: 9px 14px; font-size: .875rem; min-height: 44px; }
+      .segmented button[aria-pressed="true"] { color: var(--white); background: var(--forest); border-color: var(--forest); }
+      .annotation h3 { font-size: 1.55rem; letter-spacing: -.025em; margin-bottom: 15px; }
+      .annotation { min-height: 205px; }
+      .annotation p { color: var(--muted); }
+      .note { padding: 18px 0 0; border-top: 1px solid var(--line); margin-top: 24px; font-size: .875rem; color: var(--muted); }
+      .note strong { color: var(--ink); }
+      .source { font-size: .78rem; color: var(--muted); margin-top: 20px; }
+      .anatomy { margin-top: 32px; background: #e9eee7; padding: 25px 30px; border-radius: 8px; }
+      .anatomy-code { display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; justify-content: center; font: 1.15rem/1.7 var(--mono); }
+      .anatomy-piece { text-align: center; padding: 0 8px; }
+      .anatomy-piece b { display: block; font-weight: 500; }
+      .anatomy-piece span { display: block; margin-top: 8px; font: .75rem var(--sans); color: var(--muted); }
+      .anatomy-piece:nth-child(1) b { color: var(--green); }
+      .anatomy-piece:nth-child(3) b { color: var(--blue); }
+      .anatomy-piece:nth-child(4) b { color: var(--orange); }
+      .value-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+      .value { padding: 23px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); min-width: 0; }
+      .value code { color: var(--blue); display: block; font-size: 1rem; margin-bottom: 10px; overflow-wrap: anywhere; }
+      .value h3 { font-size: .875rem; line-height: 1.4; margin-bottom: 5px; }
+      .value p { font-size: .875rem; color: var(--muted); }
+      .value:last-child { background: #eaf0e5; }
+      .grammar-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 35px; margin-top: 34px; }
+      .grammar { padding: 24px; background: var(--forest); color: #e6eee5; border-radius: 8px; }
+      .grammar .eyebrow { color: var(--lime); margin-bottom: 14px; }
+      .grammar pre { font-size: .8rem; }
+      .grammar-note { align-self: center; }
+      .grammar-note h3 { font-size: 1.4rem; letter-spacing: -.025em; margin-bottom: 15px; }
+      .grammar-note p { color: var(--muted); }
+      .lab { border: 1px solid var(--line); border-radius: 10px; background: var(--white); overflow: hidden; }
+      .lab-toolbar { padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--line); }
+      .lab-toolbar .segmented { margin: 0; }
+      .lab-counter { font: .75rem var(--mono); color: var(--muted); }
+      .token-stream { padding: 30px 25px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-height: 105px; }
+      .token { font: .97rem/1.8 var(--mono); padding: 4px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); overflow-wrap: anywhere; max-width: 100%; }
+      .token.seen { background: #edf2e8; color: var(--ink); border-color: #d0ddc5; }
+      .token.current { background: var(--forest); border-color: var(--forest); color: var(--lime); }
+      .trace-readout { display: grid; grid-template-columns: 160px 160px 1fr; border-top: 1px solid var(--line); background: #f2f5ef; }
+      .trace-readout > div { padding: 20px 25px; }
+      .trace-readout .eyebrow { color: var(--muted); font-size: .65rem; }
+      .trace-readout strong { display: block; margin-top: 8px; font: .92rem var(--mono); }
+      .trace-readout p { font-size: .9rem; margin-top: 6px; }
+      .lab-actions { padding: 18px 25px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .buttons { display: flex; gap: 8px; }
+      .button { padding: 10px 17px; min-height: 44px; border: 1px solid var(--line); background: var(--white); color: var(--ink); border-radius: 6px; font-size: .875rem; }
+      .button.primary { background: var(--forest); color: var(--white); border-color: var(--forest); }
+      .button:disabled { opacity: .4; cursor: default; }
+      .traps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 32px; }
+      .trap { padding-top: 15px; border-top: 2px solid var(--orange); }
+      .trap h3 { font-size: 1rem; line-height: 1.4; margin-bottom: 10px; }
+      .trap p { color: var(--muted); font-size: .875rem; }
+      .trap code { overflow-wrap: anywhere; }
+      .architecture { background: var(--forest); color: #f4f6ed; }
+      .architecture .section-number { color: var(--lime); }
+      .architecture .deck { color: #c3d2ca; }
+      .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 40px; }
+      .stage { border-top: 1px solid #698373; padding-top: 18px; position: relative; }
+      .stage:not(:last-child)::after { content: "→"; position: absolute; right: -19px; top: 11px; color: var(--lime); }
+      .stage .eyebrow { color: var(--lime); font-size: .7rem; }
+      .stage h3 { font-size: 1.3rem; margin: 17px 0 12px; }
+      .stage p { color: #c3d2ca; font-size: .9rem; }
+      .storage { margin-top: 38px; padding: 25px 0; border-top: 1px solid #4a6358; border-bottom: 1px solid #4a6358; display: grid; grid-template-columns: 1fr 1.3fr; gap: 35px; }
+      .storage h3 { font-size: 1.35rem; margin-bottom: 14px; }
+      .storage p { color: #c3d2ca; font-size: .9rem; }
+      .memory-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 15px; }
+      .memory-strip span { font: .78rem/1.6 var(--mono); padding: 10px; border: 1px solid #66806e; background: var(--forest-light); }
+      .memory-strip span:first-child { color: var(--lime); border-color: var(--lime); }
+      .architecture-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; margin-top: 30px; }
+      .architecture-notes h3 { font-size: 1rem; margin-bottom: 10px; }
+      .architecture-notes p { font-size: .875rem; color: #c3d2ca; }
+      .architecture a { color: #d1dfd4; }
+      .architecture .source { color: #c3d2ca; }
+      .parallel { margin-top: 32px; display: grid; grid-template-columns: 1fr auto 1.2fr auto 1fr; gap: 18px; align-items: center; font-size: .875rem; }
+      .parallel-box { border: 1px solid #698373; padding: 15px; border-radius: 6px; text-align: center; }
+      .workers { display: grid; gap: 8px; }
+      .workers .parallel-box { padding: 8px 12px; background: var(--forest-light); }
+      .parallel-arrow { color: var(--lime); }
+      .ceiling-intro { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 30px; }
+      .complexity { display: flex; align-items: center; gap: 25px; padding: 24px; border-left: 3px solid var(--green); background: #eaf0e5; }
+      .complexity strong { font: 2.8rem/1 var(--serif); white-space: nowrap; }
+      .complexity p { font-size: .875rem; color: var(--muted); }
+      .ceiling-intro > p { color: var(--muted); align-self: center; }
+      .calculator { display: grid; grid-template-columns: 1fr 1.1fr; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--white); }
+      .calculator-controls { padding: 30px; border-right: 1px solid var(--line); }
+      .calculator h3 { font-size: 1.3rem; margin-bottom: 10px; letter-spacing: -.025em; }
+      .calculator-controls > p { color: var(--muted); font-size: .875rem; margin-bottom: 25px; }
+      .control { display: block; margin-top: 20px; }
+      .control-label { display: flex; justify-content: space-between; gap: 15px; font-size: .875rem; }
+      .control output { font: .8rem/1.65 var(--mono); white-space: nowrap; }
+      input[type="range"] { width: 100%; accent-color: var(--green); min-height: 30px; margin: 7px 0 0; cursor: pointer; }
+      .calculator-result { padding: 30px; background: #edf2e6; display: flex; flex-direction: column; justify-content: center; }
+      .big-result { font-size: clamp(3.2rem, 6vw, 5rem); letter-spacing: -.055em; font-weight: 500; line-height: 1.2; margin-top: 14px; font-variant-numeric: tabular-nums; }
+      .big-result span { font-size: 1.1rem; letter-spacing: 0; color: var(--muted); }
+      .bottleneck { font-size: .875rem; color: var(--green); margin-top: 9px; }
+      .bars { display: grid; gap: 18px; margin-top: 30px; }
+      .bar-label { display: flex; justify-content: space-between; gap: 15px; font: .75rem/1.5 var(--mono); margin-bottom: 6px; }
+      .bar-track { height: 9px; background: #dce4d4; border-radius: 2px; overflow: hidden; }
+      .bar-fill { height: 100%; background: #8b9f82; transition: width .15s; }
+      .bar-fill.limiting { background: var(--green); }
+      .result-note { font-size: .78rem; color: var(--muted); margin-top: 25px; }
+      .formula { text-align: center; padding: 27px 12px 0; font: .95rem/1.8 var(--mono); overflow-wrap: anywhere; }
+      .formula-note { text-align: center; color: var(--muted); font-size: .875rem; margin-top: 12px; }
+      .table-scroll { overflow-x: auto; margin-top: 34px; }
+      table { width: 100%; border-collapse: collapse; text-align: left; font-size: .875rem; }
+      th { font: .7rem/1.6 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+      td, th { padding: 15px 18px 15px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th:first-child { width: 26%; }
+      td:last-child { color: var(--muted); }
+      .closing { display: grid; grid-template-columns: 1fr 1.2fr; gap: 60px; padding: 64px 0; }
+      .closing h2 { font-size: 2.35rem; margin-top: 15px; }
+      .checklist { list-style: none; margin: 0; padding: 0; counter-reset: checklist; }
+      .checklist li { position: relative; padding: 12px 0 12px 38px; border-bottom: 1px solid var(--line); }
+      .checklist li::before { counter-increment: checklist; content: "0" counter(checklist); position: absolute; left: 0; top: 15px; font: .75rem var(--mono); color: var(--orange); }
+      .references { padding: 30px 0 45px; border-top: 1px solid var(--line); }
+      .references summary { cursor: pointer; font-size: .875rem; min-height: 44px; }
+      .references ol { columns: 2; column-gap: 50px; padding-left: 20px; }
+      .references li { padding: 6px 0; font-size: .8rem; break-inside: avoid; }
+      footer { border-top: 1px solid var(--line); padding: 20px 0 30px; font: .7rem/1.7 var(--mono); color: var(--muted); }
+      footer .wrap { display: flex; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
+      [hidden] { display: none !important; }
+      @media (min-width: 1400px) { .hero { padding-top: 80px; } }
+      @media (max-width: 900px) {
+        .wrap { width: calc(100% - 44px); }
+        .hero-top { gap: 28px; grid-template-columns: 1.3fr 1fr; }
+        .hero-visual, .split, .grammar-row { grid-template-columns: 1fr; }
+        .hero-code { border-right: 0; border-bottom: 1px solid #4a6358; }
+        .hero-graph { padding: 28px; }
+        .hero-graph .graph-branches { width: min(420px, 100%); align-self: center; }
+        .section-heading { grid-template-columns: 48px 1fr; }
+        .value-grid { grid-template-columns: repeat(2, 1fr); }
+        .pipeline { grid-template-columns: repeat(2, 1fr); gap: 28px; }
+        .stage:nth-child(2)::after { content: none; }
+        .storage { grid-template-columns: 1fr; gap: 20px; }
+        .closing { gap: 30px; }
+        nav { gap: 1rem; }
+      }
+      @media (max-width: 640px) {
+        html { scroll-padding-top: 1rem; }
+        header { position: static; }
+        .wrap { width: calc(100% - 36px); }
+        .topbar { padding: 16px 0; align-items: flex-start; flex-direction: column; gap: 14px; }
+        nav { gap: 17px; }
+        nav a { font-size: .8rem; }
+        .hero { padding: 38px 0 28px; }
+        .hero-top, .ceiling-intro, .calculator, .architecture-notes, .closing { grid-template-columns: 1fr; gap: 24px; }
+        h1 { font-size: clamp(2.9rem, 12vw, 4.5rem); }
+        .hero-intro { font-size: 1rem; }
+        .hero-visual { margin-top: 28px; }
+        .hero-code { padding: 20px 16px; }
+        .hero-code pre { font-size: .76rem; }
+        .hero-graph { padding: 25px 16px; }
+        .graph-node { padding: 10px 6px; font-size: .72rem; }
+        .section { padding: 48px 0; }
+        .section-heading { grid-template-columns: 35px 1fr; margin-bottom: 25px; }
+        .section-number { font-size: .7rem; }
+        .deck { font-size: 1rem; }
+        .anatomy { padding: 23px 10px; }
+        .anatomy-code { font-size: .94rem; gap: 3px; }
+        .anatomy-piece { padding: 0 3px; }
+        .value { padding: 18px 14px; }
+        .value code { font-size: .875rem; }
+        .value-grid { grid-template-columns: 1fr; }
+        .trace-readout { grid-template-columns: 1fr 1fr; }
+        .trace-readout > div { padding: 15px 20px; }
+        .trace-readout > div:last-child { grid-column: 1 / -1; padding-top: 0; }
+        .lab-actions { align-items: flex-start; flex-direction: column; }
+        .traps { grid-template-columns: 1fr; gap: 20px; }
+        .pipeline { grid-template-columns: 1fr; gap: 22px; }
+        .stage::after { content: none !important; }
+        .stage h3 { margin-top: 12px; }
+        .parallel { grid-template-columns: 1fr; gap: 10px; }
+        .parallel-arrow { text-align: center; transform: rotate(90deg); }
+        .calculator { gap: 0; }
+        .calculator-controls { padding: 24px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .calculator-result { padding: 24px; }
+        .complexity { gap: 20px; padding: 22px 18px; }
+        .references ol { columns: 1; }
+        .closing { padding: 45px 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after { transition: none !important; }
+      }
+      @media print {
+        header, .skip, .segmented, .lab-actions, .calculator-controls { display: none; }
+        body { font-size: 11pt; }
+        .wrap { width: 100%; }
+        .hero, .architecture { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .section { padding: 28px 0; }
+        h1 { font-size: 42pt; }
+        h2 { font-size: 25pt; }
+        .hero { padding: 30px 20px; }
+        .architecture { padding: 30px 20px; }
+        .calculator { display: block; }
+        .lab, .value, .stage, .complexity { break-inside: avoid; }
+        .references { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to guide</a>
+    <header>
+      <div class="wrap topbar">
+        <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">#</span> IFC / Field notes</a>
+        <nav aria-label="Guide sections"><a href="#anatomy">The file</a><a href="#grammar">The grammar</a><a href="#parser">The parser</a><a href="#performance">The ceiling</a></nav>
+      </div>
+    </header>
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="title">
+        <div class="wrap">
+          <div class="hero-top">
+            <div><p class="eyebrow">An engineer’s guide · IFC-SPF</p><h1>Inside an<br><em>.ifc</em> file.</h1></div>
+            <p class="hero-intro">A small grammar. A connected model.<br>A very different kind of parsing problem.<br><br>Follow the bytes from <strong>text to graph</strong>—and see what actually sets the speed limit.</p>
+          </div>
+          <div class="hero-visual">
+            <div class="hero-code"><div class="window-label"><span>01 / ON DISK</span><span>STEP physical file</span></div><pre><code><span class="ref">#30</span>=<span class="type">IFCPOLYLINE</span>((<span class="ref">#10</span>,<span class="ref">#20</span>));
+<span class="ref">#10</span>=<span class="type">IFCCARTESIANPOINT</span>((<span class="num">0.,0.,0.</span>));
+<span class="ref">#20</span>=<span class="type">IFCCARTESIANPOINT</span>((<span class="num">10.,0.,0.</span>));
+
+<span class="comment">/* References connect the records. */</span></code></pre></div>
+            <div class="hero-graph" role="img" aria-label="Polyline 30 references Cartesian point 10 at 0,0,0 and point 20 at 10,0,0."><div class="graph-root"><strong>#30</strong> IFCPOLYLINE</div><div class="graph-branches"><div class="graph-node">#10 · POINT<span>(0, 0, 0)</span></div><div class="graph-node">#20 · POINT<span>(10, 0, 0)</span></div></div></div>
+          </div>
+          <div class="hero-caption"><span><strong>THE KEY IDEA</strong> &nbsp; Parse the records. Connect them through IDs.</span><span>Syntax ≠ schema validation ≠ geometry</span></div>
+        </div>
+      </section>
+
+      <section class="section" id="anatomy" aria-labelledby="anatomy-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">01 /</span><div><h2>A graph, written as records.</h2><p class="deck">The header gives you context. The data section gives you entities. The schema gives their positional attributes meaning.</p></div></div>
+          <div class="split">
+            <div class="code-panel"><div class="panel-top"><span>example.ifc</span><span>Illustrative exchange</span></div><div class="file-code" aria-label="Example IFC exchange file">
+              <span class="file-line" data-part="envelope">ISO-10303-21;</span>
+              <span class="file-line active" data-part="header">HEADER;</span>
+              <span class="file-line active" data-part="header">FILE_DESCRIPTION(('Parser example'),'2;1');</span>
+              <span class="file-line active" data-part="header">FILE_NAME('example.ifc','2026-09-21T00:00:00',</span>
+              <span class="file-line active" data-part="header">  ('Author'),('Org'),'Writer','App','');</span>
+              <span class="file-line active" data-part="header">FILE_SCHEMA(('IFC4X3_ADD2'));</span>
+              <span class="file-line active" data-part="header">ENDSEC;</span>
+              <span class="file-line" data-part="data">DATA;</span>
+              <span class="file-line" data-part="data"><span class="ref">#30</span>=<span class="type">IFCPOLYLINE</span>((<span class="ref">#10</span>,<span class="ref">#20</span>));</span>
+              <span class="file-line" data-part="data"><span class="ref">#10</span>=<span class="type">IFCCARTESIANPOINT</span>((<span class="num">0.,0.,0.</span>));</span>
+              <span class="file-line" data-part="data"><span class="ref">#20</span>=<span class="type">IFCCARTESIANPOINT</span>((<span class="num">10.,0.,0.</span>));</span>
+              <span class="file-line" data-part="data">ENDSEC;</span>
+              <span class="file-line" data-part="envelope">END-ISO-10303-21;</span>
+            </div></div>
+            <div>
+              <div class="segmented" role="group" aria-label="Highlight a file region"><button type="button" data-file="envelope" aria-pressed="false">Envelope</button><button type="button" data-file="header" aria-pressed="true">Header</button><button type="button" data-file="data" aria-pressed="false">Data</button></div>
+              <div class="annotation" aria-live="polite"><h3 id="file-title">Context before content.</h3><p id="file-description">FILE_SCHEMA selects the IFC schema. FILE_DESCRIPTION declares the exchange implementation level; FILE_NAME carries provenance. These are different concerns: “IFC4X3_ADD2” identifies the data model, while “2;1” identifies the exchange profile.</p></div>
+              <p class="note"><strong>This is a serialization example, not a complete building model.</strong> Conventional IFC uses this compact envelope. Full Part 21 has additional, edition-dependent constructs; define your supported profile.</p>
+              <p class="source">References: <a href="https://www.steptools.com/docs/roselib/read_write.html">file structure</a> · <a href="https://www.steptools.com/stds/step/IS_final_p21e3.html">Part 21</a></p>
+            </div>
+          </div>
+          <div class="anatomy" aria-label="A record contains an ID, equals sign, entity type, positional arguments, and a semicolon."><div class="anatomy-code"><div class="anatomy-piece"><b>#30</b><span>identity</span></div><div class="anatomy-piece"><b>=</b><span>assignment</span></div><div class="anatomy-piece"><b>IFCPOLYLINE</b><span>entity type</span></div><div class="anatomy-piece"><b>((#10,#20))</b><span>positional arguments</span></div><div class="anatomy-piece"><b>;</b><span>record end</span></div></div></div>
+          <p class="source">The outer parentheses contain attributes; the inner pair encloses the polyline’s point list. <a href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcPolyline.htm">IfcPolyline</a> · <a href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcCartesianPoint.htm">IfcCartesianPoint</a></p>
+        </div>
+      </section>
+
+      <section class="section" id="grammar" aria-labelledby="grammar-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">02 /</span><div><h2>Learn the small vocabulary.</h2><p class="deck">Most values announce their kind with their first significant byte. The complexity lives in the data model, not in expression precedence.</p></div></div>
+          <div class="value-grid">
+            <article class="value"><code>#30</code><h3>Reference</h3><p>An entity ID. Store the number; resolve the target after parsing.</p></article>
+            <article class="value"><code>-12 &nbsp; 12. &nbsp; -1.25E+3</code><h3>Integer / real</h3><p>Recognize the token first. Convert it to the required numeric representation.</p></article>
+            <article class="value"><code>'Level 1'</code><h3>String</h3><p>Single-quoted text, with STEP-specific escaping and character encoding.</p></article>
+            <article class="value"><code>.WALL. &nbsp; .T. .F. .U.</code><h3>Enumeration / logical</h3><p>Dot-delimited values. Logical “unknown” is distinct from false and unset.</p></article>
+            <article class="value"><code>"0AF"</code><h3>Binary</h3><p>Hexadecimal bits. The first digit records the number of unused high bits.</p></article>
+            <article class="value"><code>$ &nbsp; *</code><h3>Unset / derived placeholder</h3><p>No supplied value versus an explicit attribute redeclared as derived.</p></article>
+            <article class="value"><code>(#10,#20)</code><h3>Aggregate</h3><p>A collection of values. Lists can contain nested lists.</p></article>
+            <article class="value"><code>IFCLENGTHMEASURE(2.5)</code><h3>Typed value</h3><p>A value carrying a type name. Preserve the wrapper when semantics need it.</p></article>
+            <article class="value"><code>$ ≠ * ≠ () ≠ ''</code><h3>Preserve the distinctions</h3><p>Unset, derived, empty aggregate, and empty string are different values.</p></article>
+          </div>
+          <div class="grammar-row"><div class="grammar"><p class="eyebrow">Common simple-record path · simplified</p><pre><code>record    := ref '=' name '(' args? ')' ';'
+args      := value (',' value)*
+value     := scalar | ref | '$' | '*'
+           | '(' args? ')'
+           | name '(' value ')'</code></pre></div><div class="grammar-note"><h3>Predict. Don’t backtrack.</h3><p>A byte dispatch and a small nesting stack are enough for this path. Each frame tracks whether it expects a value, a comma, or a close. Counting parentheses alone cannot catch missing separators.</p><p class="small">This sketch is not a full Part 21 grammar. Complex instances and newer exchange features need additional productions.</p></div></div>
+          <p class="source">References: <a href="https://steputils.readthedocs.io/en/latest/p21.html">value encodings</a> · <a href="https://downloads.steptools.com/docs/roselib/obj_access.html">attribute types</a> · <a href="https://www.steptools.com/stds/step/IS_final_p21e3.html">formal grammar</a></p>
+        </div>
+      </section>
+
+      <section class="section" id="parser" aria-labelledby="parser-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">03 /</span><div><h2>Follow a record through the parser.</h2><p class="deck">Step through two annotated traces. Watch the scanner recognize a token and the parser update its state.</p></div></div>
+          <div class="lab">
+            <div class="lab-toolbar"><div class="segmented" role="group" aria-label="Parser trace example"><button type="button" data-trace="record" aria-pressed="true">Nested references</button><button type="button" data-trace="string" aria-pressed="false">Escaped string</button></div><span class="lab-counter" id="trace-counter">Token 1 / 11</span></div>
+            <div class="token-stream" id="token-stream" aria-label="Token sequence"></div>
+            <div class="trace-readout" aria-live="polite"><div><span class="eyebrow">Recognized</span><strong id="trace-kind">REFERENCE</strong></div><div><span class="eyebrow">Open parentheses</span><strong id="trace-depth">0</strong></div><div><span class="eyebrow">Parser action</span><p id="trace-action">Capture entity ID 30. Expect “=”.</p></div></div>
+            <div class="lab-actions"><span class="small muted">Annotated examples, not a general-purpose parser.</span><div class="buttons"><button type="button" class="button" id="trace-back" disabled>← Back</button><button type="button" class="button primary" id="trace-next">Next token →</button></div></div>
+          </div>
+          <div class="traps">
+            <article class="trap"><h3>Punctuation is contextual.</h3><p><code>'Door; west, level (2)'</code><br>The semicolon, comma, and parentheses belong to the string. Comments can hide the same characters.</p></article>
+            <article class="trap"><h3>A newline is not a boundary.</h3><p>Strict Part 21 ignores certain control characters even inside tokens. Keep a contiguous-byte fast path and a correct slow path for these cases.</p></article>
+            <article class="trap"><h3>Strings have their own codec.</h3><p><code>'\X2\00C4\X0\' → Ä</code><br>Handle the selected profile’s Unicode and legacy directives. STEP escaping is not JSON escaping.</p></article>
+          </div>
+          <p class="source">References: <a href="https://www.steptools.com/stds/step/IS_final_p21e3.html">lexical rules</a> · <a href="https://technical.buildingsmart.org/resources/ifcimplementationguidance/string-encoding/">IFC string encoding</a></p>
+          <noscript><p class="note">The interactive trace requires JavaScript. The record token order is: reference → equals → type → open arguments → open list → reference → comma → reference → close list → close arguments → semicolon. The rest of this guide is readable without JavaScript.</p></noscript>
+        </div>
+      </section>
+
+      <section class="section architecture" id="architecture" aria-labelledby="architecture-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">04 /</span><div><h2>Build around memory movement.</h2><p class="deck">The fast path reads bytes, recognizes structure, and writes compact output. Avoid making an object for every token.</p></div></div>
+          <div class="pipeline">
+            <article class="stage"><span class="eyebrow">01 · Scan</span><h3>Find structure.</h3><p>Track strings, comments, and delimiters. SIMD can classify many candidate bytes at once; lexical state decides which matter.</p></article>
+            <article class="stage"><span class="eyebrow">02 · Parse</span><h3>Consume directly.</h3><p>Use predictable byte dispatch and an explicit nesting stack. Convert values only as required by the output contract.</p></article>
+            <article class="stage"><span class="eyebrow">03 · Store</span><h3>Write compactly.</h3><p>Use contiguous value buffers, type IDs, and aggregate ranges. For extraction, write directly into required columns.</p></article>
+            <article class="stage"><span class="eyebrow">04 · Link</span><h3>Resolve IDs.</h3><p>Build the reference index. Check duplicates and unresolved targets. Schema validation and geometry follow separately.</p></article>
+          </div>
+          <div class="storage"><div><h3>Think buffers, not object forests.</h3><p>A directory maps each entity ID to its type and value range. Lists point into a shared buffer. These are logical stages—you can fuse them without intermediate token arrays.</p></div><div><p class="eyebrow">Entity #30 → type: POLYLINE · values: [0, 1)</p><div class="memory-strip" aria-label="Value buffer: list at index 0 points to reference values at indices 1 and 2."><span>0 · LIST(1,2)</span><span>1 · REF(10)</span><span>2 · REF(20)</span><span>3 · …</span></div><p class="small" style="margin-top:14px">Keep source offsets for diagnostics. Decode retained string spans on demand.</p></div></div>
+          <div class="architecture-notes"><article><h3>Zero-copy has a lifetime.</h3><p>Borrowed strings require the source buffer to stay alive. A streaming reader that releases chunks must copy retained values or keep backing storage. Validate encoding even if decoding is deferred when promising full validation.</p></article><article><h3>IDs need a density-aware index.</h3><p>Use a direct array for dense IDs; a paged structure or hash table for sparse ones. Never size an allocation solely from the largest untrusted ID. Guard numeric overflow and nesting depth.</p></article></div>
+          <div class="parallel" aria-label="Parallel parsing: a safe-boundary scan feeds three record workers, whose buffers combine into an ID index."><div class="parallel-box">Find safe<br>record boundaries</div><span class="parallel-arrow" aria-hidden="true">→</span><div class="workers"><div class="parallel-box">Worker A · record batch</div><div class="parallel-box">Worker B · record batch</div><div class="parallel-box">Worker C · record batch</div></div><span class="parallel-arrow" aria-hidden="true">→</span><div class="parallel-box">Combine buffers<br>Build ID index</div></div>
+          <div class="architecture-notes"><article><h3>Parallelize after measuring.</h3><p>Split at confirmed record boundaries, never arbitrary semicolons. Private worker arenas avoid allocation contention. A boundary pass adds traffic and serial work; a giant record can still dominate one worker.</p></article><article><h3>Borrow the technique, not the benchmark.</h3><p>SIMD structural scanning has proven effective for JSON. STEP requires different quote, comment, and encoding logic. JSON throughput is not an IFC speed guarantee.</p></article></div>
+          <p class="source">Architecture recommendations are engineering judgments. Related research: <a href="https://arxiv.org/abs/1902.08318">Parsing Gigabytes of JSON per Second</a>.</p>
+        </div>
+      </section>
+
+      <section class="section" id="performance" aria-labelledby="performance-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">05 /</span><div><h2>Where is the speed limit?</h2><p class="deck">Linear work is optimal for full parsing. The GB/s ceiling depends on your machine, your input, and what you promise to produce.</p></div></div>
+          <div class="ceiling-intro"><div class="complexity"><strong>Θ(N)</strong><p>Full validation must inspect the input.<br>A deterministic parser can do linear work under bounded-cost scalar processing.</p></div><p>Once the algorithm is linear, the real question is how much CPU work and memory traffic each input byte creates. A faster scanner cannot erase the cost of an oversized output.</p></div>
+          <div class="calculator">
+            <div class="calculator-controls"><h3>Explore the upper bound.</h3><p>Illustrative assumptions—not measured IFC performance. Change the workload to see the limiting resource.</p>
+              <label class="control" for="input-bandwidth"><span class="control-label"><span>Input delivery</span><output id="input-value" for="input-bandwidth">3 GB/s</output></span><input id="input-bandwidth" type="range" min="1" max="100" step="1" value="3"></label>
+              <label class="control" for="memory-bandwidth"><span class="control-label"><span>Memory bandwidth</span><output id="memory-value" for="memory-bandwidth">60 GB/s</output></span><input id="memory-bandwidth" type="range" min="10" max="400" step="10" value="60"></label>
+              <label class="control" for="traffic"><span class="control-label"><span>Memory traffic / input byte</span><output id="traffic-value" for="traffic">3×</output></span><input id="traffic" type="range" min="1" max="20" step="0.5" value="3"></label>
+              <label class="control" for="cores"><span class="control-label"><span>Effectively utilized cores</span><output id="cores-value" for="cores">1</output></span><input id="cores" type="range" min="1" max="16" step="1" value="1"></label>
+              <label class="control" for="frequency"><span class="control-label"><span>Clock frequency</span><output id="frequency-value" for="frequency">4 GHz</output></span><input id="frequency" type="range" min="1" max="5" step="0.1" value="4"></label>
+              <label class="control" for="cycles"><span class="control-label"><span>CPU cycles / input byte</span><output id="cycles-value" for="cycles">4</output></span><input id="cycles" type="range" min="0.5" max="12" step="0.5" value="4"></label>
+            </div>
+            <div class="calculator-result"><p class="eyebrow">Optimistic throughput bound</p><div aria-live="polite" aria-atomic="true"><p class="big-result"><output id="ceiling-value">1.00</output> <span>GB/s</span></p><p class="bottleneck" id="bottleneck">CPU is the limiting resource.</p></div><div class="bars" aria-label="Resource ceilings; all bars share a scale">
+              <div><div class="bar-label"><span>INPUT</span><span id="input-bound">3.00 GB/s</span></div><div class="bar-track"><div class="bar-fill" id="input-bar" style="width:15%"></div></div></div>
+              <div><div class="bar-label"><span>MEMORY</span><span id="memory-bound">20.00 GB/s</span></div><div class="bar-track"><div class="bar-fill" id="memory-bar" style="width:100%"></div></div></div>
+              <div><div class="bar-label"><span>CPU</span><span id="cpu-bound">1.00 GB/s</span></div><div class="bar-track"><div class="bar-fill limiting" id="cpu-bar" style="width:5%"></div></div></div>
+            </div><p class="result-note">The smallest ceiling wins. Decimal GB/s. Bars rescale together. Real throughput is lower when stages fail to overlap, or incur serial work, contention, cache misses, and scheduling overhead.</p></div>
+          </div>
+          <p class="formula">R ≤ min(B<sub>input</sub>, B<sub>memory</sub> / a, p × f / c)</p><p class="formula-note">a = memory traffic per input byte · p = effective cores · f = clock frequency · c = cycles per input byte</p>
+          <div class="table-scroll"><table><caption class="eyebrow" style="text-align:left;margin-bottom:12px">Always name the parsing contract</caption><thead><tr><th scope="col">Contract</th><th scope="col">What it produces</th><th scope="col">Work beyond scanning</th></tr></thead><tbody>
+            <tr><td>Syntax validation</td><td>A syntactic yes/no</td><td>Typically O(depth) nesting state; no entity graph required.</td></tr>
+            <tr><td>Record indexing</td><td>IDs and byte ranges</td><td>O(records) index storage; values may remain unparsed.</td></tr>
+            <tr><td>Materialization</td><td>Converted values</td><td>Numeric conversion, string decoding, and output writes.</td></tr>
+            <tr><td>Reference resolution</td><td>Connected entities</td><td>Expected O(entities + references) using a hash index.</td></tr>
+            <tr><td>Schema validation</td><td>Model conformance</td><td>Constraint-dependent checks; not covered by the lexical bound.</td></tr>
+            <tr><td>Geometry evaluation</td><td>Shapes or meshes</td><td>A separate algorithmic workload, not “parsing speed”.</td></tr>
+          </tbody></table></div>
+          <p class="note"><strong>Numbers can become the bottleneck.</strong> Coordinate-heavy files spend real time converting decimal text to binary floating point. Use a correctly rounded converter with fallbacks; a naive multiply-and-add loop is not equivalent. <a href="https://arxiv.org/abs/2101.11408">Number parsing research</a>.</p>
+        </div>
+      </section>
+
+      <div class="wrap">
+        <section class="closing" aria-labelledby="closing-title"><div><p class="eyebrow" style="color:var(--orange)">The implementation brief</p><h2>Start compact.<br>Measure the whole path.</h2><p class="deck">One pass is a useful starting point. The best final design depends on the output you actually need.</p></div><ol class="checklist"><li>Fuse a byte scanner with a predictive parser.</li><li>Write compact buffers; avoid per-token allocations.</li><li>Resolve references without recursively loading targets.</li><li>Measure scanning, conversion, storage, and linking separately.</li><li>Add SIMD and parallel batches where measurements justify them.</li></ol></section>
+        <details class="references"><summary>Sources &amp; scope</summary><p class="small muted">This guide covers conventional IFC-SPF and the common simple-record path. The example uses IFC4X3_ADD2. It is not a complete Part 21 implementation specification. Architecture and performance models are engineering recommendations; calculator values are hypothetical.</p><ol><li><a href="https://github.com/buildingSMART/technical.buildingsmart.org/blob/main/IFC-Formats.md">buildingSMART — IFC formats</a></li><li><a href="https://www.steptools.com/stds/step/IS_final_p21e3.html">Part 21 — published third-edition specification text</a></li><li><a href="https://www.steptools.com/docs/roselib/read_write.html">STEP Tools — reading and writing data sets</a></li><li><a href="https://steputils.readthedocs.io/en/latest/p21.html">STEPutils — Part 21 value encodings</a></li><li><a href="https://downloads.steptools.com/docs/roselib/obj_access.html">STEP Tools — EXPRESS data objects</a></li><li><a href="https://technical.buildingsmart.org/resources/ifcimplementationguidance/string-encoding/">buildingSMART — IFC string encoding</a></li><li><a href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcPolyline.htm">IFC 4.3.2 — IfcPolyline</a></li><li><a href="https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcCartesianPoint.htm">IFC 4.3.2 — IfcCartesianPoint</a></li><li><a href="https://arxiv.org/abs/1902.08318">Langdale &amp; Lemire — Parsing Gigabytes of JSON per Second</a></li><li><a href="https://arxiv.org/abs/2101.11408">Lemire — Number Parsing at a Gigabyte per Second</a></li></ol></details>
+      </div>
+    </main>
+    <footer><div class="wrap"><span>IFC / FIELD NOTES &nbsp; · &nbsp; SEPTEMBER 2026</span><span>Small grammar. Compact storage. Measured performance.</span></div></footer>
+    <script>
+      "use strict";
+      const fileRegions = {
+        envelope: { title: "The exchange has boundaries.", description: "ISO-10303-21 opens the exchange; END-ISO-10303-21 closes the conventional file shown here. The envelope tells you how to read the exchange. Full Part 21 supports more than this minimal shape, including edition-dependent sections." },
+        header: { title: "Context before content.", description: "FILE_SCHEMA selects the IFC schema. FILE_DESCRIPTION declares the exchange implementation level; FILE_NAME carries provenance. These are different concerns: “IFC4X3_ADD2” identifies the data model, while “2;1” identifies the exchange profile." },
+        data: { title: "Records become connected entities.", description: "#30 defines a polyline whose single attribute is a list of point references. #10 and #20 appear later: references are not restricted to previously parsed records. Store the IDs first, then connect the graph. Semicolons end records; newlines do not." }
+      };
+      function selectRegion(event) {
+        const selected = event.currentTarget.dataset.file;
+        document.querySelectorAll("[data-file]").forEach(function (button) { button.setAttribute("aria-pressed", String(button.dataset.file === selected)); });
+        document.querySelectorAll("[data-part]").forEach(function (line) { line.classList.toggle("active", line.dataset.part === selected); });
+        document.getElementById("file-title").textContent = fileRegions[selected].title;
+        document.getElementById("file-description").textContent = fileRegions[selected].description;
+      }
+      document.querySelectorAll("[data-file]").forEach(function (button) { button.addEventListener("click", selectRegion); });
+
+      const traces = {
+        record: [
+          ["#30", "REFERENCE", 0, "Capture entity ID 30. Expect “=”."],
+          ["=", "EQUALS", 0, "Begin the entity definition. Expect a type name."],
+          ["IFCPOLYLINE", "TYPE NAME", 0, "Identify the entity type. Expect its argument list."],
+          ["(", "OPEN", 1, "Open the entity’s positional argument frame."],
+          ["(", "OPEN", 2, "The first argument is an aggregate. Push a list frame."],
+          ["#10", "REFERENCE", 2, "Append reference ID 10. Do not load the target recursively."],
+          [",", "COMMA", 2, "The list requires another value next."],
+          ["#20", "REFERENCE", 2, "Append reference ID 20 to the same aggregate."],
+          [")", "CLOSE", 1, "Close the aggregate. Return to the argument frame."],
+          [")", "CLOSE", 0, "Close the entity arguments. Expect a record terminator."],
+          [";", "END RECORD", 0, "Commit #30. Resolve references after building the ID index."]
+        ],
+        string: [
+          ["#42", "REFERENCE", 0, "Capture entity ID 42. Expect “=”."],
+          ["=", "EQUALS", 0, "Begin the entity definition."],
+          ["IFCPROPERTYSINGLEVALUE", "TYPE NAME", 0, "Recognize the entity keyword."],
+          ["(", "OPEN", 1, "Begin positional attributes."],
+          ["'O''Brien; west'", "STRING", 1, "One string token: doubled apostrophes encode one apostrophe. The semicolon is text, not a record end."],
+          [",", "COMMA", 1, "Separate the name from the next attribute."],
+          ["$", "UNSET", 1, "Emit a distinct unset marker."],
+          [",", "COMMA", 1, "Expect the next attribute value."],
+          ["IFCLENGTHMEASURE", "TYPE NAME", 1, "Begin a typed value; retain its type name."],
+          ["(", "OPEN", 2, "Open the typed-value wrapper."],
+          ["2.5", "REAL", 2, "Recognize a real token. Convert only as required by the output contract."],
+          [")", "CLOSE", 1, "Finish the typed value and return to entity arguments."],
+          [",", "COMMA", 1, "Expect the final attribute."],
+          ["$", "UNSET", 1, "Emit another unset marker."],
+          [")", "CLOSE", 0, "Finish the entity’s argument list."],
+          [";", "END RECORD", 0, "This semicolon is structural. Commit the record."]
+        ]
+      };
+      let activeTrace = "record";
+      let tracePosition = 0;
+      function renderTrace() {
+        const sequence = traces[activeTrace];
+        const current = sequence[tracePosition];
+        const stream = document.getElementById("token-stream");
+        stream.replaceChildren();
+        sequence.forEach(function (entry, index) {
+          const token = document.createElement("span");
+          token.className = "token" + (index < tracePosition ? " seen" : index === tracePosition ? " current" : "");
+          token.textContent = entry[0];
+          if (index === tracePosition) token.setAttribute("aria-current", "step");
+          stream.appendChild(token);
+        });
+        document.getElementById("trace-counter").textContent = "Token " + (tracePosition + 1) + " / " + sequence.length;
+        document.getElementById("trace-kind").textContent = current[1];
+        document.getElementById("trace-depth").textContent = String(current[2]);
+        document.getElementById("trace-action").textContent = current[3];
+        document.getElementById("trace-back").disabled = tracePosition === 0;
+        document.getElementById("trace-next").textContent = tracePosition === sequence.length - 1 ? "Replay ↺" : "Next token →";
+      }
+      function selectTrace(event) {
+        activeTrace = event.currentTarget.dataset.trace;
+        tracePosition = 0;
+        document.querySelectorAll("[data-trace]").forEach(function (button) { button.setAttribute("aria-pressed", String(button.dataset.trace === activeTrace)); });
+        renderTrace();
+      }
+      document.querySelectorAll("[data-trace]").forEach(function (button) { button.addEventListener("click", selectTrace); });
+      document.getElementById("trace-back").addEventListener("click", function () { tracePosition = Math.max(0, tracePosition - 1); renderTrace(); });
+      document.getElementById("trace-next").addEventListener("click", function () { tracePosition = (tracePosition + 1) % traces[activeTrace].length; renderTrace(); });
+
+      function calculateCeilings(input, memory, traffic, cores, frequency, cycles) {
+        const bounds = [input, memory / traffic, cores * frequency / cycles];
+        const minimum = Math.min(...bounds);
+        return { bounds, minimum, limiting: bounds.map(function (value) { return Math.abs(value - minimum) < 1e-9; }) };
+      }
+      function updateCeiling() {
+        const input = Number(document.getElementById("input-bandwidth").value);
+        const memory = Number(document.getElementById("memory-bandwidth").value);
+        const traffic = Number(document.getElementById("traffic").value);
+        const cores = Number(document.getElementById("cores").value);
+        const frequency = Number(document.getElementById("frequency").value);
+        const cycles = Number(document.getElementById("cycles").value);
+        const result = calculateCeilings(input, memory, traffic, cores, frequency, cycles);
+        const labels = ["Input", "Memory", "CPU"];
+        const names = ["input", "memory", "cpu"];
+        const max = Math.max(...result.bounds);
+        const limitedBy = labels.filter(function (_, index) { return result.limiting[index]; });
+        document.getElementById("input-value").textContent = input + " GB/s";
+        document.getElementById("memory-value").textContent = memory + " GB/s";
+        document.getElementById("traffic-value").textContent = traffic + "×";
+        document.getElementById("cores-value").textContent = String(cores);
+        document.getElementById("frequency-value").textContent = frequency + " GHz";
+        document.getElementById("cycles-value").textContent = String(cycles);
+        document.getElementById("ceiling-value").textContent = result.minimum.toFixed(2);
+        document.getElementById("bottleneck").textContent = limitedBy.join(" + ") + (limitedBy.length === 1 ? " is the limiting resource." : " share the limiting bound.");
+        names.forEach(function (name, index) {
+          document.getElementById(name + "-bound").textContent = result.bounds[index].toFixed(2) + " GB/s";
+          const bar = document.getElementById(name + "-bar");
+          bar.style.width = (100 * result.bounds[index] / max) + "%";
+          bar.classList.toggle("limiting", result.limiting[index]);
+        });
+      }
+      document.querySelectorAll('input[type="range"]').forEach(function (input) { input.addEventListener("input", updateCeiling); });
+      renderTrace();
+      updateCeiling();
+    </script>
+  </body>
+</html>

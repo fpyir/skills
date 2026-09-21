@@ -1,0 +1,4 @@
+interface:
+  display_name: "Field Guide Explainer"
+  short_description: "Create polished, interactive HTML field guides"
+  default_prompt: "Use $field-guide-explainer to turn this material into a self-contained visual HTML explainer."

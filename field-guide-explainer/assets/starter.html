@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{META_DESCRIPTION}}">
+    <meta name="theme-color" content="#142c2a">
+    <title>{{PAGE_TITLE}}</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%23142c2a'/%3E%3Cpath d='M12 11h16v3H15v6h11v3H15v7h-3z' fill='%23d8f781'/%3E%3C/svg%3E">
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f7f8f4;
+        --white: #ffffff;
+        --ink: #172e2b;
+        --muted: #54645e;
+        --line: #d6ded6;
+        --forest: #142c2a;
+        --forest-light: #203e39;
+        --lime: #d8f781;
+        --green: #376952;
+        --orange: #b64720;
+        --blue: #245e95;
+        --purple: #74529a;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; scroll-padding-top: 6rem; }
+      body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+      a { color: inherit; text-underline-offset: .2em; }
+      button, a, input { -webkit-tap-highlight-color: transparent; }
+      :focus-visible { outline: 3px solid var(--orange); outline-offset: 5px; }
+      ::selection { color: var(--forest); background: var(--lime); }
+      h1, h2, h3, p { margin: 0; }
+      h1, h2, h3 { line-height: 1.1; }
+      p + p { margin-top: 1rem; }
+      code, pre, .mono { font-family: var(--mono); }
+      code { font-size: .9em; }
+      pre { margin: 0; line-height: 1.85; font-size: .86rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .wrap { width: min(1160px, calc(100% - 80px)); margin: auto; }
+      .eyebrow { font: 600 .75rem/1.5 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+      .muted { color: var(--muted); }
+      .small { font-size: .875rem; }
+      .skip { position: absolute; left: 1rem; top: -100px; z-index: 10; padding: .75rem; background: var(--lime); }
+      .skip:focus { top: 1rem; }
+      header { position: sticky; top: 0; z-index: 5; background: var(--paper); border-bottom: 1px solid var(--line); }
+      .topbar { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; }
+      .brand { display: flex; align-items: center; gap: .65rem; font-weight: 650; text-decoration: none; white-space: nowrap; }
+      .brand-mark { background: var(--forest); color: var(--lime); font: 1.4rem var(--mono); padding: .1rem .5rem; border-radius: 5px; }
+      nav { display: flex; gap: 1.6rem; flex-wrap: wrap; }
+      nav a { color: var(--muted); font-size: .875rem; text-decoration: none; }
+      nav a:hover { color: var(--ink); text-decoration: underline; }
+      .hero { background: var(--forest); color: #f4f6ed; padding: 64px 0 42px; overflow: hidden; }
+      .hero-top { display: grid; grid-template-columns: 1.4fr 1fr; gap: 4rem; align-items: end; }
+      .hero .eyebrow { color: var(--lime); }
+      h1 { font-size: clamp(3rem, 6.7vw, 5.4rem); font-weight: 550; letter-spacing: -.065em; margin-top: 1.4rem; }
+      h1 em { font-family: var(--serif); color: var(--lime); font-weight: 400; }
+      .hero-intro { color: #c3d2ca; font-size: 1.125rem; max-width: 29rem; padding-bottom: .4rem; }
+      .hero-intro strong { color: #f4f6ed; font-weight: 500; }
+      .hero-visual { margin-top: 44px; display: grid; grid-template-columns: 1.2fr 1fr; border: 1px solid #4a6358; border-radius: 12px; overflow: hidden; }
+      .hero-code { padding: 24px 30px 30px; border-right: 1px solid #4a6358; }
+      .window-label { display: flex; justify-content: space-between; align-items: center; gap: 1rem; font: .75rem var(--mono); color: #b6c9bd; margin-bottom: 22px; }
+      .window-label span:last-child { color: var(--lime); }
+      .hero-code pre { font-size: .88rem; }
+      .ref { color: #d8f781; }
+      .type { color: #93d6e2; }
+      .num { color: #ffbd8b; }
+      .comment { color: #a9bfb2; }
+      .hero-graph { padding: 22px 25px; display: flex; flex-direction: column; justify-content: center; background: radial-gradient(#52695b 1px, transparent 1px); background-size: 18px 18px; }
+      .graph-root, .graph-node { background: var(--forest-light); border: 1px solid #78947d; border-radius: 7px; padding: 11px 15px; font: .82rem/1.5 var(--mono); }
+      .graph-root { align-self: center; border-color: var(--lime); }
+      .graph-root strong { color: var(--lime); font-weight: 500; }
+      .graph-branches { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; position: relative; padding-top: 39px; }
+      .graph-branches::before { content: ""; position: absolute; top: 0; left: 25%; width: 50%; height: 25px; border-bottom: 1px solid #a4bf96; background: linear-gradient(#a4bf96, #a4bf96) center top / 1px 25px no-repeat; }
+      .graph-node { position: relative; text-align: center; }
+      .graph-node::before { content: ""; position: absolute; height: 14px; width: 1px; background: #a4bf96; top: -15px; left: 50%; }
+      .graph-node span { display: block; color: #c3d2ca; margin-top: 3px; }
+      .hero-caption { margin-top: 22px; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; color: #b6c9bd; font: .75rem/1.7 var(--mono); }
+      .hero-caption strong { color: var(--lime); font-weight: 400; }
+      .section { padding: 76px 0; border-bottom: 1px solid var(--line); }
+      .section-heading { display: grid; grid-template-columns: 72px 1fr; margin-bottom: 34px; }
+      .section-number { color: var(--orange); font: .8rem var(--mono); padding-top: 9px; }
+      h2 { font-size: clamp(2rem, 3.6vw, 3rem); letter-spacing: -.045em; font-weight: 550; }
+      .deck { margin-top: 15px; max-width: 690px; color: var(--muted); font-size: 1.0625rem; }
+      .split { display: grid; grid-template-columns: 1.4fr 1fr; gap: 38px; align-items: start; }
+      .code-panel { background: var(--white); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      .panel-top { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 1rem; font: .75rem var(--mono); color: var(--muted); }
+      .file-code { padding: 18px 0; counter-reset: line; }
+      .file-line { display: block; font: .78rem/1.85 var(--mono); padding: 1px 20px 1px 53px; position: relative; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid transparent; }
+      .file-line::before { counter-increment: line; content: counter(line, decimal-leading-zero); position: absolute; left: 15px; color: #758078; font-size: .7rem; }
+      .file-line.active { background: #edf4df; border-left-color: var(--green); }
+      .file-line .ref { color: var(--green); }
+      .file-line .type { color: var(--blue); }
+      .file-line .num { color: var(--orange); }
+      .segmented { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+      .segmented button { border: 1px solid var(--line); color: var(--muted); background: transparent; border-radius: 6px; padding: 9px 14px; font-size: .875rem; min-height: 44px; }
+      .segmented button[aria-pressed="true"] { color: var(--white); background: var(--forest); border-color: var(--forest); }
+      .annotation h3 { font-size: 1.55rem; letter-spacing: -.025em; margin-bottom: 15px; }
+      .annotation { min-height: 205px; }
+      .annotation p { color: var(--muted); }
+      .note { padding: 18px 0 0; border-top: 1px solid var(--line); margin-top: 24px; font-size: .875rem; color: var(--muted); }
+      .note strong { color: var(--ink); }
+      .source { font-size: .78rem; color: var(--muted); margin-top: 20px; }
+      .anatomy { margin-top: 32px; background: #e9eee7; padding: 25px 30px; border-radius: 8px; }
+      .anatomy-code { display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; justify-content: center; font: 1.15rem/1.7 var(--mono); }
+      .anatomy-piece { text-align: center; padding: 0 8px; }
+      .anatomy-piece b { display: block; font-weight: 500; }
+      .anatomy-piece span { display: block; margin-top: 8px; font: .75rem var(--sans); color: var(--muted); }
+      .anatomy-piece:nth-child(1) b { color: var(--green); }
+      .anatomy-piece:nth-child(3) b { color: var(--blue); }
+      .anatomy-piece:nth-child(4) b { color: var(--orange); }
+      .value-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+      .value { padding: 23px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); min-width: 0; }
+      .value code { color: var(--blue); display: block; font-size: 1rem; margin-bottom: 10px; overflow-wrap: anywhere; }
+      .value h3 { font-size: .875rem; line-height: 1.4; margin-bottom: 5px; }
+      .value p { font-size: .875rem; color: var(--muted); }
+      .value:last-child { background: #eaf0e5; }
+      .grammar-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 35px; margin-top: 34px; }
+      .grammar { padding: 24px; background: var(--forest); color: #e6eee5; border-radius: 8px; }
+      .grammar .eyebrow { color: var(--lime); margin-bottom: 14px; }
+      .grammar pre { font-size: .8rem; }
+      .grammar-note { align-self: center; }
+      .grammar-note h3 { font-size: 1.4rem; letter-spacing: -.025em; margin-bottom: 15px; }
+      .grammar-note p { color: var(--muted); }
+      .lab { border: 1px solid var(--line); border-radius: 10px; background: var(--white); overflow: hidden; }
+      .lab-toolbar { padding: 20px 25px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--line); }
+      .lab-toolbar .segmented { margin: 0; }
+      .lab-counter { font: .75rem var(--mono); color: var(--muted); }
+      .token-stream { padding: 30px 25px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-height: 105px; }
+      .token { font: .97rem/1.8 var(--mono); padding: 4px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); overflow-wrap: anywhere; max-width: 100%; }
+      .token.seen { background: #edf2e8; color: var(--ink); border-color: #d0ddc5; }
+      .token.current { background: var(--forest); border-color: var(--forest); color: var(--lime); }
+      .trace-readout { display: grid; grid-template-columns: 160px 160px 1fr; border-top: 1px solid var(--line); background: #f2f5ef; }
+      .trace-readout > div { padding: 20px 25px; }
+      .trace-readout .eyebrow { color: var(--muted); font-size: .65rem; }
+      .trace-readout strong { display: block; margin-top: 8px; font: .92rem var(--mono); }
+      .trace-readout p { font-size: .9rem; margin-top: 6px; }
+      .lab-actions { padding: 18px 25px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+      .buttons { display: flex; gap: 8px; }
+      .button { padding: 10px 17px; min-height: 44px; border: 1px solid var(--line); background: var(--white); color: var(--ink); border-radius: 6px; font-size: .875rem; }
+      .button.primary { background: var(--forest); color: var(--white); border-color: var(--forest); }
+      .button:disabled { opacity: .4; cursor: default; }
+      .traps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 32px; }
+      .trap { padding-top: 15px; border-top: 2px solid var(--orange); }
+      .trap h3 { font-size: 1rem; line-height: 1.4; margin-bottom: 10px; }
+      .trap p { color: var(--muted); font-size: .875rem; }
+      .trap code { overflow-wrap: anywhere; }
+      .architecture { background: var(--forest); color: #f4f6ed; }
+      .architecture .section-number { color: var(--lime); }
+      .architecture .deck { color: #c3d2ca; }
+      .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 40px; }
+      .stage { border-top: 1px solid #698373; padding-top: 18px; position: relative; }
+      .stage:not(:last-child)::after { content: "→"; position: absolute; right: -19px; top: 11px; color: var(--lime); }
+      .stage .eyebrow { color: var(--lime); font-size: .7rem; }
+      .stage h3 { font-size: 1.3rem; margin: 17px 0 12px; }
+      .stage p { color: #c3d2ca; font-size: .9rem; }
+      .storage { margin-top: 38px; padding: 25px 0; border-top: 1px solid #4a6358; border-bottom: 1px solid #4a6358; display: grid; grid-template-columns: 1fr 1.3fr; gap: 35px; }
+      .storage h3 { font-size: 1.35rem; margin-bottom: 14px; }
+      .storage p { color: #c3d2ca; font-size: .9rem; }
+      .memory-strip { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 15px; }
+      .memory-strip span { font: .78rem/1.6 var(--mono); padding: 10px; border: 1px solid #66806e; background: var(--forest-light); }
+      .memory-strip span:first-child { color: var(--lime); border-color: var(--lime); }
+      .architecture-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; margin-top: 30px; }
+      .architecture-notes h3 { font-size: 1rem; margin-bottom: 10px; }
+      .architecture-notes p { font-size: .875rem; color: #c3d2ca; }
+      .architecture a { color: #d1dfd4; }
+      .architecture .source { color: #c3d2ca; }
+      .parallel { margin-top: 32px; display: grid; grid-template-columns: 1fr auto 1.2fr auto 1fr; gap: 18px; align-items: center; font-size: .875rem; }
+      .parallel-box { border: 1px solid #698373; padding: 15px; border-radius: 6px; text-align: center; }
+      .workers { display: grid; gap: 8px; }
+      .workers .parallel-box { padding: 8px 12px; background: var(--forest-light); }
+      .parallel-arrow { color: var(--lime); }
+      .ceiling-intro { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 30px; }
+      .complexity { display: flex; align-items: center; gap: 25px; padding: 24px; border-left: 3px solid var(--green); background: #eaf0e5; }
+      .complexity strong { font: 2.8rem/1 var(--serif); white-space: nowrap; }
+      .complexity p { font-size: .875rem; color: var(--muted); }
+      .ceiling-intro > p { color: var(--muted); align-self: center; }
+      .calculator { display: grid; grid-template-columns: 1fr 1.1fr; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--white); }
+      .calculator-controls { padding: 30px; border-right: 1px solid var(--line); }
+      .calculator h3 { font-size: 1.3rem; margin-bottom: 10px; letter-spacing: -.025em; }
+      .calculator-controls > p { color: var(--muted); font-size: .875rem; margin-bottom: 25px; }
+      .control { display: block; margin-top: 20px; }
+      .control-label { display: flex; justify-content: space-between; gap: 15px; font-size: .875rem; }
+      .control output { font: .8rem/1.65 var(--mono); white-space: nowrap; }
+      input[type="range"] { width: 100%; accent-color: var(--green); min-height: 30px; margin: 7px 0 0; cursor: pointer; }
+      .calculator-result { padding: 30px; background: #edf2e6; display: flex; flex-direction: column; justify-content: center; }
+      .big-result { font-size: clamp(3.2rem, 6vw, 5rem); letter-spacing: -.055em; font-weight: 500; line-height: 1.2; margin-top: 14px; font-variant-numeric: tabular-nums; }
+      .big-result span { font-size: 1.1rem; letter-spacing: 0; color: var(--muted); }
+      .bottleneck { font-size: .875rem; color: var(--green); margin-top: 9px; }
+      .bars { display: grid; gap: 18px; margin-top: 30px; }
+      .bar-label { display: flex; justify-content: space-between; gap: 15px; font: .75rem/1.5 var(--mono); margin-bottom: 6px; }
+      .bar-track { height: 9px; background: #dce4d4; border-radius: 2px; overflow: hidden; }
+      .bar-fill { height: 100%; background: #8b9f82; transition: width .15s; }
+      .bar-fill.limiting { background: var(--green); }
+      .result-note { font-size: .78rem; color: var(--muted); margin-top: 25px; }
+      .formula { text-align: center; padding: 27px 12px 0; font: .95rem/1.8 var(--mono); overflow-wrap: anywhere; }
+      .formula-note { text-align: center; color: var(--muted); font-size: .875rem; margin-top: 12px; }
+      .table-scroll { overflow-x: auto; margin-top: 34px; }
+      table { width: 100%; border-collapse: collapse; text-align: left; font-size: .875rem; }
+      th { font: .7rem/1.6 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+      td, th { padding: 15px 18px 15px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th:first-child { width: 26%; }
+      td:last-child { color: var(--muted); }
+      .closing { display: grid; grid-template-columns: 1fr 1.2fr; gap: 60px; padding: 64px 0; }
+      .closing h2 { font-size: 2.35rem; margin-top: 15px; }
+      .checklist { list-style: none; margin: 0; padding: 0; counter-reset: checklist; }
+      .checklist li { position: relative; padding: 12px 0 12px 38px; border-bottom: 1px solid var(--line); }
+      .checklist li::before { counter-increment: checklist; content: "0" counter(checklist); position: absolute; left: 0; top: 15px; font: .75rem var(--mono); color: var(--orange); }
+      .references { padding: 30px 0 45px; border-top: 1px solid var(--line); }
+      .references summary { cursor: pointer; font-size: .875rem; min-height: 44px; }
+      .references ol { columns: 2; column-gap: 50px; padding-left: 20px; }
+      .references li { padding: 6px 0; font-size: .8rem; break-inside: avoid; }
+      footer { border-top: 1px solid var(--line); padding: 20px 0 30px; font: .7rem/1.7 var(--mono); color: var(--muted); }
+      footer .wrap { display: flex; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
+      [hidden] { display: none !important; }
+      @media (min-width: 1400px) { .hero { padding-top: 80px; } }
+      @media (max-width: 900px) {
+        .wrap { width: calc(100% - 44px); }
+        .hero-top { gap: 28px; grid-template-columns: 1.3fr 1fr; }
+        .hero-visual, .split, .grammar-row { grid-template-columns: 1fr; }
+        .hero-code { border-right: 0; border-bottom: 1px solid #4a6358; }
+        .hero-graph { padding: 28px; }
+        .hero-graph .graph-branches { width: min(420px, 100%); align-self: center; }
+        .section-heading { grid-template-columns: 48px 1fr; }
+        .value-grid { grid-template-columns: repeat(2, 1fr); }
+        .pipeline { grid-template-columns: repeat(2, 1fr); gap: 28px; }
+        .stage:nth-child(2)::after { content: none; }
+        .storage { grid-template-columns: 1fr; gap: 20px; }
+        .closing { gap: 30px; }
+        nav { gap: 1rem; }
+      }
+      @media (max-width: 640px) {
+        html { scroll-padding-top: 1rem; }
+        header { position: static; }
+        .wrap { width: calc(100% - 36px); }
+        .topbar { padding: 16px 0; align-items: flex-start; flex-direction: column; gap: 14px; }
+        nav { gap: 17px; }
+        nav a { font-size: .8rem; }
+        .hero { padding: 38px 0 28px; }
+        .hero-top, .ceiling-intro, .calculator, .architecture-notes, .closing { grid-template-columns: 1fr; gap: 24px; }
+        h1 { font-size: clamp(2.9rem, 12vw, 4.5rem); }
+        .hero-intro { font-size: 1rem; }
+        .hero-visual { margin-top: 28px; }
+        .hero-code { padding: 20px 16px; }
+        .hero-code pre { font-size: .76rem; }
+        .hero-graph { padding: 25px 16px; }
+        .graph-node { padding: 10px 6px; font-size: .72rem; }
+        .section { padding: 48px 0; }
+        .section-heading { grid-template-columns: 35px 1fr; margin-bottom: 25px; }
+        .section-number { font-size: .7rem; }
+        .deck { font-size: 1rem; }
+        .anatomy { padding: 23px 10px; }
+        .anatomy-code { font-size: .94rem; gap: 3px; }
+        .anatomy-piece { padding: 0 3px; }
+        .value { padding: 18px 14px; }
+        .value code { font-size: .875rem; }
+        .value-grid { grid-template-columns: 1fr; }
+        .trace-readout { grid-template-columns: 1fr 1fr; }
+        .trace-readout > div { padding: 15px 20px; }
+        .trace-readout > div:last-child { grid-column: 1 / -1; padding-top: 0; }
+        .lab-actions { align-items: flex-start; flex-direction: column; }
+        .traps { grid-template-columns: 1fr; gap: 20px; }
+        .pipeline { grid-template-columns: 1fr; gap: 22px; }
+        .stage::after { content: none !important; }
+        .stage h3 { margin-top: 12px; }
+        .parallel { grid-template-columns: 1fr; gap: 10px; }
+        .parallel-arrow { text-align: center; transform: rotate(90deg); }
+        .calculator { gap: 0; }
+        .calculator-controls { padding: 24px; border-right: 0; border-bottom: 1px solid var(--line); }
+        .calculator-result { padding: 24px; }
+        .complexity { gap: 20px; padding: 22px 18px; }
+        .references ol { columns: 1; }
+        .closing { padding: 45px 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after { transition: none !important; }
+      }
+      @media print {
+        header, .skip, .segmented, .lab-actions, .calculator-controls { display: none; }
+        body { font-size: 11pt; }
+        .wrap { width: 100%; }
+        .hero, .architecture { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .section { padding: 28px 0; }
+        h1 { font-size: 42pt; }
+        h2 { font-size: 25pt; }
+        .hero { padding: 30px 20px; }
+        .architecture { padding: 30px 20px; }
+        .calculator { display: block; }
+        .lab, .value, .stage, .complexity { break-inside: avoid; }
+        .references { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- AUTHORING: Replace all double-braced slots. Adapt the outline to the topic.
+         Borrow only useful components from ifc-reference.html; remove unused CSS,
+         these comments, and all sample subject matter before delivery. -->
+    <a class="skip" href="#main">Skip to guide</a>
+    <header>
+      <div class="wrap topbar">
+        <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">F</span> {{SUBJECT}} / Field notes</a>
+        <nav aria-label="Guide sections">
+          <a href="#structure">{{CHAPTER_ONE_SHORT}}</a>
+          <a href="#mechanism">{{CHAPTER_TWO_SHORT}}</a>
+          <a href="#implications">{{CHAPTER_THREE_SHORT}}</a>
+        </nav>
+      </div>
+    </header>
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="title">
+        <div class="wrap">
+          <div class="hero-top">
+            <div><p class="eyebrow">{{GUIDE_CATEGORY}}</p><h1>{{TITLE_LEAD}}<br><em>{{TITLE_EMPHASIS}}</em></h1></div>
+            <p class="hero-intro">{{READER_QUESTION_AND_PREMISE}}</p>
+          </div>
+          <div class="hero-visual">
+            <div class="hero-code">
+              <div class="window-label"><span>{{EXAMPLE_LABEL}}</span><span>{{EXAMPLE_CONTEXT}}</span></div>
+              <pre><code>{{CONCRETE_EXAMPLE}}</code></pre>
+            </div>
+            <!-- AUTHORING: This two-child graph is optional. Use the diagram that
+                 explains this topic; do not force it into a tree. -->
+            <div class="hero-graph" role="img" aria-label="{{GRAPH_ACCESSIBLE_DESCRIPTION}}">
+              <div class="graph-root"><strong>{{ROOT_ID}}</strong> {{ROOT_LABEL}}</div>
+              <div class="graph-branches">
+                <div class="graph-node">{{FIRST_NODE}}<span>{{FIRST_NODE_DETAIL}}</span></div>
+                <div class="graph-node">{{SECOND_NODE}}<span>{{SECOND_NODE_DETAIL}}</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-caption"><span><strong>THE KEY IDEA</strong> &nbsp; {{CENTRAL_INSIGHT}}</span></div>
+        </div>
+      </section>
+      <section class="section" id="structure" aria-labelledby="structure-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">01 /</span><div><h2 id="structure-title">{{CHAPTER_ONE_TITLE}}</h2><p class="deck">{{CHAPTER_ONE_PREMISE}}</p></div></div>
+          <div class="split">
+            <div class="code-panel">
+              <div class="panel-top"><span>{{EXAMPLE_NAME}}</span><span>{{EXAMPLE_SCOPE}}</span></div>
+              <pre style="padding:24px"><code>{{ANNOTATED_EXAMPLE}}</code></pre>
+            </div>
+            <div class="annotation"><h3>{{EXAMPLE_INSIGHT}}</h3><p>{{EXAMPLE_EXPLANATION}}</p><p class="note">{{NECESSARY_QUALIFICATION}}</p></div>
+          </div>
+          <p class="source">{{LOCAL_SOURCE_ATTRIBUTION}}</p>
+          <!-- AUTHORING: Add a vocabulary grid, anatomy strip, or region selector
+               only when it advances the explanation. -->
+        </div>
+      </section>
+      <section class="section architecture" id="mechanism" aria-labelledby="mechanism-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">02 /</span><div><h2 id="mechanism-title">{{CHAPTER_TWO_TITLE}}</h2><p class="deck">{{CHAPTER_TWO_PREMISE}}</p></div></div>
+          <!-- AUTHORING: Adapt stages and connectors to the actual mechanism.
+               The reference has richer storage and parallel-work diagrams. -->
+          <div class="pipeline">
+            <article class="stage"><span class="eyebrow">01 · {{STAGE_ONE_LABEL}}</span><h3>{{STAGE_ONE_TITLE}}</h3><p>{{STAGE_ONE_EXPLANATION}}</p></article>
+            <article class="stage"><span class="eyebrow">02 · {{STAGE_TWO_LABEL}}</span><h3>{{STAGE_TWO_TITLE}}</h3><p>{{STAGE_TWO_EXPLANATION}}</p></article>
+            <article class="stage"><span class="eyebrow">03 · {{STAGE_THREE_LABEL}}</span><h3>{{STAGE_THREE_TITLE}}</h3><p>{{STAGE_THREE_EXPLANATION}}</p></article>
+            <article class="stage"><span class="eyebrow">04 · {{STAGE_FOUR_LABEL}}</span><h3>{{STAGE_FOUR_TITLE}}</h3><p>{{STAGE_FOUR_EXPLANATION}}</p></article>
+          </div>
+          <p class="source">{{MECHANISM_SOURCE_ATTRIBUTION}}</p>
+        </div>
+      </section>
+      <section class="section" id="implications" aria-labelledby="implications-title">
+        <div class="wrap">
+          <div class="section-heading"><span class="section-number">03 /</span><div><h2 id="implications-title">{{CHAPTER_THREE_TITLE}}</h2><p class="deck">{{CHAPTER_THREE_PREMISE}}</p></div></div>
+          <div class="grammar-row"><div class="grammar"><p class="eyebrow">{{MODEL_OR_RULE_LABEL}}</p><pre><code>{{MODEL_OR_RULE}}</code></pre></div><div class="grammar-note"><h3>{{INTERPRETATION_TITLE}}</h3><p>{{INTERPRETATION}}</p></div></div>
+          <!-- AUTHORING: If a calculator or stepper genuinely helps, adapt the
+               reference's markup and behavior together. State its assumptions. -->
+          <p class="source">{{IMPLICATIONS_SOURCE_ATTRIBUTION}}</p>
+        </div>
+      </section>
+      <div class="wrap">
+        <section class="closing" aria-labelledby="closing-title">
+          <div><p class="eyebrow" style="color:var(--orange)">{{PRACTICAL_CLOSE_LABEL}}</p><h2 id="closing-title">{{PRACTICAL_CONCLUSION}}</h2><p class="deck">{{CLOSING_CONTEXT}}</p></div>
+          <ol class="checklist"><li>{{ACTION_ONE}}</li><li>{{ACTION_TWO}}</li><li>{{ACTION_THREE}}</li></ol>
+        </section>
+        <details class="references"><summary>Sources &amp; scope</summary><p class="small muted">{{SCOPE_AND_ASSUMPTIONS}}</p><ol><li>{{SOURCE_LINK}}</li></ol></details>
+      </div>
+    </main>
+    <footer><div class="wrap"><span>{{SUBJECT}} / FIELD NOTES</span><span>{{FOOTER_CONTEXT}}</span></div></footer>
+  </body>
+</html>
