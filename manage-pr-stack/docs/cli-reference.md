@@ -118,10 +118,10 @@ python3 stack.py mark-merged ABC-200 ABC-201 --base main --notes "Squash-merged 
 
 ## Rebase Planning
 
-Use `rebase-plan` to generate input for `scripts/stack-rebase`. It performs no git operations:
+Use `rebase-plan` to generate input for `scripts/stack-rebase`. Pass `--repo` so the bottom row's boundary is resolved to a commit sha:
 
 ```bash
-python3 stack.py rebase-plan ABC-123 --from ABC-124 --onto origin/main
+python3 stack.py rebase-plan ABC-123 --from ABC-124 --onto origin/main --repo /Users/you/code/todo-app
 ```
 
 The text output is TSV shaped as:
@@ -131,24 +131,40 @@ branch<TAB>new_parent<TAB>old_parent
 branch<TAB>new_parent
 ```
 
+`old_parent` on the first row is the boundary: `scripts/stack-rebase` replays `old_parent..branch` onto `new_parent`. It is chosen as follows:
+
+- First PR is the stack-base PR: `git merge-base <branch> <remote>/<stack base_ref>` with `--repo`, or the bare `<remote>/<stack base_ref>` without it. The local base branch is never used because it is often stale. `--remote` defaults to `origin`.
+- First PR is mid-stack: the parent PR's branch, which is also the right boundary after the parent was squash-merged and `mark-merged` retargeted `base_ref`.
+
+`--repo` runs only `git merge-base`, read-only, in that checkout. Without it `rebase-plan` performs no git operations, and the bare remote ref fails the `stack-rebase` ancestor check whenever the base has moved since the stack was built.
+
+`scripts/stack-rebase` refuses a row before simulating or rebasing when:
+
+- `old_parent` is not an ancestor of `branch`, or
+- `old_parent..branch` contains commits already reachable from `new_parent`, usually because the boundary is a stale local base branch.
+
+The refusal lists the offending commits and prints the merge-base of `branch` and `new_parent` to use as the boundary. The dry-run lists every commit it would replay under each branch, so check that each branch replays only its own commits.
+
 For operational rebases:
 
 1. Locate and validate the stack.
 2. Fetch the repo and inspect current refs when needed.
-3. Generate a rebase plan from the affected PR or `stack-base`.
-4. Dry-run with `scripts/stack-rebase`.
+3. Generate a rebase plan from the affected PR or `stack-base`, with `--repo`.
+4. Dry-run with `scripts/stack-rebase` and confirm each branch replays only its own commits.
 5. Execute and push only when the dry-run is clean and the user's request authorizes the operation.
 6. Record a concise event after successful work.
 
 Example:
 
 ```bash
-python3 stack.py rebase-plan ABC-123 --from ABC-124 --onto origin/main > /tmp/stack.tsv
+git -C /Users/you/code/todo-app fetch origin
+python3 stack.py rebase-plan ABC-123 --from ABC-124 --onto origin/main --repo /Users/you/code/todo-app > /tmp/stack.tsv
 ./scripts/stack-rebase \
   --repo /Users/you/code/todo-app \
-  --fetch \
   --plan /tmp/stack.tsv
 ```
+
+Fetch before generating the plan so the merge-base is computed against the current remote base.
 
 When the dry-run is clean and execution is authorized:
 
