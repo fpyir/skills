@@ -22,7 +22,8 @@ Use `stack.py` as the normal interface for reading and updating stack records. D
 - `stacks/*.events.jsonl`: ignored local event logs for real current work.
 - `examples/*.toml`: tracked example stack records.
 - `examples/*.events.jsonl`: tracked example event logs.
-- `scripts/stack-rebase`: helper for dry-running, rebasing, and force-pushing linear PR stack branches with explicit `--onto` boundaries and `--force-with-lease`.
+- `scripts/stack-rebase`: helper for dry-running, rebasing, and force-pushing linear PR stack branches with explicit `--onto` boundaries and `--force-with-lease`. Its preflight refuses a boundary that would replay commits already in the new parent.
+- `tests/test_stack_cli.py`: unittest for the rebase boundary; run `python3 -m unittest tests/test_stack_cli.py` from the skill directory after changing `stack.py` or `scripts/stack-rebase`.
 
 ## Core Rules
 
@@ -68,7 +69,7 @@ Use `stack.py` as the normal interface for reading and updating stack records. D
 
 1. Confirm whether the user wants a record-only update or actual GitHub/local branch work.
 2. If record-only, use `mark-merged <stack> <target> --base <ref>`.
-3. If descendants need rebasing, use `descendants` and `rebase-plan`, then perform the stack rebase workflow if authorized.
+3. If descendants need rebasing, use `descendants` and `rebase-plan --repo <workspace>`, then perform the stack rebase workflow if authorized.
 4. Record an event describing completed durable work.
 
 ### Propagate A Pushed Parent Change
@@ -78,8 +79,8 @@ Use this when the user says a branch was pushed or adjusted and asks to update t
 1. Locate and validate the stack.
 2. Fetch origin and inspect local/remote refs for the changed branch and descendants.
 3. Identify descendants with `descendants`.
-4. Generate a `rebase-plan` from the changed PR onto the requested or inferred parent.
-5. Dry-run `scripts/stack-rebase`.
+4. Generate a `rebase-plan` from the changed PR onto the requested or inferred parent. Pass `--repo <workspace>` so a stack-base boundary resolves to the merge-base with the remote base, never the possibly stale local base branch.
+5. Dry-run `scripts/stack-rebase` and check each branch replays only its own commits. If preflight refuses a boundary, use the merge-base it prints as the first row's third column after confirming it is the commit the branch was built on.
 6. Rebase each descendant in order and force-push because the user requested stack propagation.
 7. Stop and ask if conflicts are non-trivial, a descendant branch is missing, the local worktree contains unrelated dirty changes, or observed topology differs from the stack record.
 8. Append a concise event naming the changed parent and rebased descendant range.

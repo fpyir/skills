@@ -5,9 +5,12 @@ Plan format, whitespace-separated:
 
     branch new_parent [old_parent]
 
-Use explicit old_parent for the first row when the previous parent was
-squash-merged or deleted. For later rows, old_parent can usually be omitted:
-the script uses the previous branch's captured origin tip.
+old_parent is the boundary commit: everything in old_parent..branch is
+replayed. Use an explicit old_parent for the first row. For later rows it can
+usually be omitted: the script uses the previous branch's captured origin tip.
+
+Preflight refuses a row when old_parent is not an ancestor of branch, or when
+old_parent..branch contains commits already reachable from new_parent.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ class ResolvedRow:
     branch_oid: str
     old_remote_oid: str
     old_parent_oid: str
+    replay: list[str]
 
 
 class StackRebaseError(RuntimeError):
@@ -137,9 +141,17 @@ def resolve_rows(repo: Path, remote: str, rows: list[PlanRow]) -> list[ResolvedR
                 f"remote={short_oid(repo, old_remote_oid)}"
             )
 
+        replay = commits_to_replay(repo, old_parent_oid, branch_oid)
+        check_boundary(repo, row, branch_oid, old_parent_oid, replay)
         old_remote_by_branch[row.branch] = old_remote_oid
         resolved.append(
-            ResolvedRow(row=row, branch_oid=branch_oid, old_remote_oid=old_remote_oid, old_parent_oid=old_parent_oid)
+            ResolvedRow(
+                row=row,
+                branch_oid=branch_oid,
+                old_remote_oid=old_remote_oid,
+                old_parent_oid=old_parent_oid,
+                replay=replay,
+            )
         )
     return resolved
 
@@ -149,17 +161,44 @@ def commits_to_replay(repo: Path, old_parent_oid: str, branch_oid: str) -> list[
     return output.splitlines() if output else []
 
 
+def describe_commit(repo: Path, commit: str) -> str:
+    return git(repo, "log", "-1", "--pretty=%h %s", commit).stdout.strip()
+
+
+def check_boundary(repo: Path, row: PlanRow, branch_oid: str, old_parent_oid: str, replay: list[str]) -> None:
+    new_parent_oid = oid(repo, row.new_parent)
+    merge_base = git(repo, "merge-base", branch_oid, new_parent_oid, check=False).stdout.strip()
+    hint = f"; merge-base of {row.branch} and {row.new_parent} is {short_oid(repo, merge_base)}" if merge_base else ""
+    is_ancestor = git(repo, "merge-base", "--is-ancestor", old_parent_oid, branch_oid, check=False).returncode == 0
+    if not is_ancestor:
+        raise StackRebaseError(
+            f"plan line {row.line_no} ({row.branch}): old_parent {short_oid(repo, old_parent_oid)} "
+            f"is not an ancestor of {row.branch}{hint}"
+        )
+    not_in_new_parent = set(commits_to_replay(repo, new_parent_oid, branch_oid))
+    already_upstream = [commit for commit in replay if commit not in not_in_new_parent]
+    if already_upstream:
+        listing = "\n".join(f"  {describe_commit(repo, commit)}" for commit in already_upstream)
+        raise StackRebaseError(
+            f"plan line {row.line_no} ({row.branch}): old_parent {short_oid(repo, old_parent_oid)} would replay "
+            f"{len(already_upstream)} commit(s) already in {row.new_parent}{hint}; "
+            f"a stale local base branch is the usual cause\n{listing}"
+        )
+
+
 def simulate(repo: Path, resolved: list[ResolvedRow]) -> dict[str, str]:
     simulated_tips: dict[str, str] = {}
     for item in resolved:
         row = item.row
         new_parent = simulated_tips.get(row.new_parent, oid(repo, row.new_parent))
-        replay = commits_to_replay(repo, item.old_parent_oid, item.branch_oid)
+        replay = item.replay
         current_parent = new_parent
         print(
             f"DRY-RUN {row.branch}: replay {len(replay)} commit(s) onto "
             f"{short_oid(repo, current_parent)} after {short_oid(repo, item.old_parent_oid)}"
         )
+        for commit in replay:
+            print(f"  {describe_commit(repo, commit)}")
 
         for commit in replay:
             require_linear_commit(repo, commit)

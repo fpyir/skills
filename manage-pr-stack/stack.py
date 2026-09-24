@@ -110,6 +110,12 @@ def main() -> int:
     rebase_plan.add_argument("stack", help="stack id, filename stem, or path")
     rebase_plan.add_argument("--from", dest="from_target", required=True, help="first PR")
     rebase_plan.add_argument("--onto", required=True, help="new parent for the first row")
+    rebase_plan.add_argument("--remote", default="origin", help="remote that holds the stack base, default: origin")
+    rebase_plan.add_argument(
+        "--repo",
+        type=Path,
+        help="git checkout used to resolve the stack-base boundary to a merge-base sha; read-only",
+    )
 
     mark_merged = subparsers.add_parser("mark-merged", help="record a merged PR")
     mark_merged.add_argument("stack", help="stack id, filename stem, or path")
@@ -290,7 +296,7 @@ def descendants_command(args: argparse.Namespace) -> str:
 
 def rebase_plan_command(args: argparse.Namespace) -> str:
     stack_file = resolve_stack(args.stacks_dir, args.stack)
-    rows = rebase_plan(stack_file.data, args.from_target, args.onto)
+    rows = rebase_plan(stack_file.data, args.from_target, args.onto, args.remote, args.repo)
     if args.json_output:
         return to_json(rows)
     return "\n".join(
@@ -572,17 +578,37 @@ def descendant_prs(data: dict[str, Any], target: str) -> list[dict[str, Any]]:
     return descendants
 
 
-def rebase_plan(data: dict[str, Any], target: str, onto: str) -> list[dict[str, str]]:
+def rebase_plan(
+    data: dict[str, Any], target: str, onto: str, remote: str, repo: Path | None
+) -> list[dict[str, str]]:
     prs = get_prs(data) if target == "stack-base" else [require_pr(data, target), *descendant_prs(data, target)]
     rows = []
     previous_branch = onto
     for index, pr in enumerate(prs):
         row = {"branch": pr["branch"], "new_parent": previous_branch}
         if index == 0:
-            row["old_parent"] = pr["base_ref"]
+            row["old_parent"] = rebase_boundary(data, pr, remote, repo)
         rows.append(row)
         previous_branch = pr["branch"]
     return rows
+
+
+def rebase_boundary(data: dict[str, Any], pr: dict[str, Any], remote: str, repo: Path | None) -> str:
+    if pr["parent"] != "stack-base":
+        parent = require_pr(data, pr["parent"])
+        return parent["branch"]
+    # Never the local base branch: it is often stale.
+    base = f"{remote}/{data['stack']['base_ref']}"
+    if repo is None:
+        return base
+    return git_output(repo, "merge-base", pr["branch"], base)
+
+
+def git_output(repo: Path, *args: str) -> str:
+    result = subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise CliError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+    return result.stdout.strip()
 
 
 def parent_from_base_ref(data: dict[str, Any], base_ref: str) -> str:
